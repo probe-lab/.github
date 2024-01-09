@@ -4,7 +4,7 @@
 
 # Welcome to ProbeLab 👋
 
-The Protocol Benchmarking & Optimization Team
+The Protocol Measurement, Benchmarking & Optimization Team
 
 ## About Us
 
@@ -19,7 +19,7 @@ The Protocol Benchmarking & Optimization Team
 
 ## Current Focus
 
-Our team is particularly active in the [IPFS](https://ipfs.io) and [Filecoin](https://filecoin.io) space. However, our work extends beyond these domains, as we dive deep into protocols as independent entities and investigate exogenous factors that influence their performance.
+Over the last few years our team has been particularly active in the [IPFS](https://ipfs.io) and [Filecoin](https://filecoin.io) space. However, our work extends far beyond these domains. As of the beginning of 2024 we will be expanding our focus on the wider libp2p ecosystem and the projects and platforms that build on top of it. We will be diving deep into libp2p components and libp2p-based protocols as independent entities and we will investigate exogenous factors that influence their performance.
 
 ## Recent Major Projects
 
@@ -42,6 +42,7 @@ Our team is particularly active in the [IPFS](https://ipfs.io) and [Filecoin](ht
 ## Connect with Us
 
 - [Website](https://probelab.io)
+- [Contact Info](https://probelab.io/about/#contact)
 - [GitHub Organization](https://github.com/plprobelab)
 - [BlueSky](https://bsky.app/profile/probelab.io)
 
