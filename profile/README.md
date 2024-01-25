@@ -43,7 +43,7 @@ Over the last few years our team has been particularly active in the [IPFS](http
 
 - [Website](https://probelab.io)
 - [Contact Info](https://probelab.io/about/#contact)
-- [GitHub Organization](https://github.com/plprobelab)
+- [GitHub Organization](https://github.com/probe-lab)
 - [BlueSky](https://bsky.app/profile/probelab.io)
 
 Feel free to explore our repositories and get in touch if you have questions or want to collaborate!
