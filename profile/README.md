@@ -1,5 +1,5 @@
 <a href="https://probelab.io" target="_blank">
-    <img src="./profile/probelab-logo-dht@1.png" alt="ProbeLab Logo" width="150">
+    <img src="./profile/ProbeLab Horizontal Dark.png" alt="ProbeLab Logo" width="150">
 </a>
 
 # Welcome to ProbeLab 👋
