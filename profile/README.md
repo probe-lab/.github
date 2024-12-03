@@ -1,8 +1,9 @@
-<a href="https://probelab.io" target="_blank">
-    <img src="./profile/ProbeLab Horizontal Dark.png" alt="ProbeLab Logo" width="150">
-</a>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./logo-horizontal-light.png">
+  <img alt="ProbeLab Logo" src="./logo-horizontal-dark.png">
+</picture>
 
-# Welcome to ProbeLab 👋
+# Welcome!
 
 The Protocol Measurement, Benchmarking & Optimization Team
 
