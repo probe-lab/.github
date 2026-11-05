@@ -247,8 +247,9 @@ commit, then calls `release.yml`. Write the changes under `## [1.2.3]` in
 
 ### Terraform
 
-probelab-infra plans on every pull request and applies when a person starts
-the workflow on `main`:
+No repo runs Terraform in CI. probelab-infra runs Terraform from a local
+shell. A repo that plans on every pull request, and applies when a person
+starts the workflow on `main`, calls `terraform.yml` like this:
 
 ```yaml
 on:
@@ -266,8 +267,7 @@ jobs:
     uses: probe-lab/.github/.github/workflows/terraform.yml@v1
     with:
       mode: plan
-      aws-role: arn:aws:iam::019120760881:role/prod-use1-github-oidc-terraform-role
-      gcp-service-account: github@probelab-data.iam.gserviceaccount.com
+      aws-role: arn:aws:iam::<account-id>:role/<read-only-plan-role>
     secrets: inherit
 
   apply:
@@ -278,13 +278,14 @@ jobs:
     uses: probe-lab/.github/.github/workflows/terraform.yml@v1
     with:
       mode: apply
-      aws-role: arn:aws:iam::019120760881:role/prod-use1-github-oidc-terraform-role
-      gcp-service-account: github@probelab-data.iam.gserviceaccount.com
+      aws-role: arn:aws:iam::<account-id>:role/<apply-role>
     secrets: inherit
 ```
 
 Every secret whose name starts with `TF_VAR_` becomes a Terraform variable.
-When the read-only plan role exists, the plan job uses it.
+The plan job runs the Terraform code of the pull request. Give it a read-only
+role, and make sure that the trust policy of the apply role rejects pull
+request runs.
 
 ## Runners
 
@@ -306,10 +307,9 @@ self-hosted machine is down, delete the org variable `RUNNER_LABEL`.
    && git push origin v1.0.0 v1`.
 2. Create the org variable `RUNNER_LABEL` with the value `probelab-ci` and
    the repository access "Private repositories".
-3. In each service repo and in probelab-infra, create the environment
-   `production` (Settings, Environments). Deploys and Terraform applies run
-   in it, and GitHub shows the live commit under Deployments on the repo
-   page.
+3. In each service repo, create the environment `production` (Settings,
+   Environments). Deploys run in it, and GitHub shows the live commit under
+   Deployments on the repo page.
 4. Narrow the AWS trust in probelab-infra (`tf/oidc.tf`), as the strategy's
    first phase says.
 
