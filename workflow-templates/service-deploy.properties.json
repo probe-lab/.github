@@ -1,0 +1,7 @@
+{
+  "name": "ProbeLab Deploy button",
+  "description": "Deploys the image of one commit to an ECS service, when a person starts it.",
+  "iconName": "octicon rocket",
+  "categories": ["Deployment"],
+  "filePatterns": ["^Dockerfile"]
+}

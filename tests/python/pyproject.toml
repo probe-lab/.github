@@ -1,0 +1,6 @@
+[project]
+name = "fixture"
+version = "0.0.0"
+description = "A tiny project that the CI of this repo tests with the shared workflows."
+requires-python = ">=3.12"
+dependencies = []

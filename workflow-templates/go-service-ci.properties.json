@@ -1,0 +1,7 @@
+{
+  "name": "ProbeLab Go service CI",
+  "description": "Lints and tests every pull request, and builds the image of every merge. Nothing deploys.",
+  "iconName": "octicon checklist",
+  "categories": ["Go"],
+  "filePatterns": ["^go\\.mod$", "^Dockerfile"]
+}

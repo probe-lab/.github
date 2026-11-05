@@ -1,0 +1,7 @@
+{
+  "name": "ProbeLab release",
+  "description": "Tests a version tag and publishes the GitHub release, with optional binaries and images.",
+  "iconName": "octicon tag",
+  "categories": ["Go"],
+  "filePatterns": ["^CHANGELOG\\.md$"]
+}

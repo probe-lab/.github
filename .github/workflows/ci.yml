@@ -1,0 +1,62 @@
+# Checks this repo: lints every workflow and template, and runs the shared
+# workflows against the small projects in tests/. The deploy, release and
+# Terraform workflows need AWS, so only actionlint checks them.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checking out the code
+        uses: actions/checkout@v6
+
+      - name: Linting the workflows and templates
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+          ./actionlint -color .github/workflows/*.yml workflow-templates/*.yml
+
+  go:
+    uses: ./.github/workflows/go.yml
+    with:
+      runner: ubuntu-latest
+      working-directory: tests/go
+      clickhouse: true
+
+  python:
+    uses: ./.github/workflows/python.yml
+    with:
+      runner: ubuntu-latest
+      working-directory: tests/python
+      clickhouse: true
+
+  image:
+    uses: ./.github/workflows/image.yml
+    with:
+      runner: ubuntu-latest
+      service: fixture
+      context: tests/go
+      dockerfile: tests/go/Dockerfile
+
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [actionlint, go, python, image]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checking that every job passed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

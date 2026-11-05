@@ -1,0 +1,157 @@
+# Builds a Docker image. With push, it pushes the image to ECR as
+# <service>-sha<commit>; a pull request also gets <service>-pr<number>.
+# Without push, it only checks that the image builds. See the README for an
+# example call.
+#
+# The caller grants id-token: write when push is true.
+name: Image
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: The first part of every image tag, for example atlas.
+        type: string
+        required: true
+      push:
+        description: Pushes the image to ECR. Without it, the image is only built.
+        type: boolean
+        default: false
+      runner:
+        description: >-
+          The runner label. Empty means the RUNNER_LABEL variable, then
+          ubuntu-latest. Public repos pass ubuntu-latest.
+        type: string
+        default: ""
+      context:
+        type: string
+        default: "."
+      dockerfile:
+        description: The Dockerfile, as a path from the repo root.
+        type: string
+        default: Dockerfile
+      build-args:
+        description: Build arguments, one KEY=VALUE per line.
+        type: string
+        default: ""
+      platforms:
+        type: string
+        default: linux/amd64
+      fetch-depth:
+        description: >-
+          The git history to check out. 0 means all of it, which a build
+          needs when go build reads the version from the tags.
+        type: number
+        default: 1
+      aws-region:
+        type: string
+        default: us-east-1
+      aws-role:
+        type: string
+        default: arn:aws:iam::019120760881:role/prod-use1-github-oidc-role
+      ecr-registry:
+        type: string
+        default: 019120760881.dkr.ecr.us-east-1.amazonaws.com
+      ecr-repository:
+        type: string
+        default: probelab
+      timeout-minutes:
+        type: number
+        default: 45
+    secrets:
+      GO_PRIVATE_TOKEN:
+        description: >-
+          Given to the build as the secret github_token, for Dockerfiles
+          that download private Go modules.
+        required: false
+    outputs:
+      image:
+        description: The image with its commit tag, for example 0191.../probelab:atlas-sha1a2b3c4.
+        value: ${{ jobs.image.outputs.image }}
+      tag:
+        description: The commit tag, for example atlas-sha1a2b3c4.
+        value: ${{ jobs.image.outputs.tag }}
+
+jobs:
+  image:
+    name: Image
+    runs-on: ${{ inputs.runner || vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    outputs:
+      image: ${{ steps.tags.outputs.image }}
+      tag: ${{ steps.tags.outputs.tag }}
+    steps:
+      # A pull request builds its head commit, not the merge commit, so the
+      # tag names a commit that exists in the repo.
+      - name: Checking out the code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: ${{ inputs.fetch-depth }}
+
+      - name: Computing the image tags
+        id: tags
+        env:
+          SERVICE: ${{ inputs.service }}
+          IMAGE: ${{ inputs.ecr-registry }}/${{ inputs.ecr-repository }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          tag="$SERVICE-sha${SHA::7}"
+          tags="$IMAGE:$tag"
+          if [[ -n "$PR" ]]; then
+            tags="$tags,$IMAGE:$SERVICE-pr$PR"
+          fi
+          {
+            echo "tag=$tag"
+            echo "image=$IMAGE:$tag"
+            echo "tags=$tags"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Configuring AWS credentials
+        if: inputs.push
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ inputs.aws-region }}
+          role-to-assume: ${{ inputs.aws-role }}
+
+      - name: Logging in to Amazon ECR
+        if: inputs.push
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # A commit is built once. A rerun of a merged commit skips the build.
+      # A pull request always builds, so its pr tag follows the latest push.
+      - name: Checking if the image exists
+        id: exists
+        if: inputs.push && github.event_name != 'pull_request'
+        env:
+          REPOSITORY: ${{ inputs.ecr-repository }}
+          TAG: ${{ steps.tags.outputs.tag }}
+        run: |
+          if aws ecr describe-images --repository-name "$REPOSITORY" --image-ids imageTag="$TAG" > /dev/null 2>&1; then
+            echo "$TAG exists. Nothing to build."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A self-hosted runner builds in its own Docker, which keeps the build
+      # cache between jobs. A GitHub-hosted runner keeps docker-container,
+      # because its Docker may not build several platforms with the docker
+      # driver.
+      - name: Setting up Docker Buildx
+        if: steps.exists.outputs.exists != 'true'
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: ${{ runner.environment == 'self-hosted' && 'docker' || 'docker-container' }}
+
+      - name: Building the image
+        if: steps.exists.outputs.exists != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          build-args: ${{ inputs.build-args }}
+          secrets: |
+            github_token=${{ secrets.GO_PRIVATE_TOKEN }}
+          push: ${{ inputs.push }}
+          tags: ${{ steps.tags.outputs.tags }}

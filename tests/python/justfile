@@ -1,0 +1,7 @@
+# checks that every file compiles
+lint:
+    uv run python -m compileall -q fixture.py tests
+
+# runs the tests
+test:
+    uv run python -m unittest discover -s tests -t . -v

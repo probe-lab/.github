@@ -1,0 +1,246 @@
+# Deploys the image of one commit to one ECS service. A person starts it with
+# a repo's Deploy workflow; nothing deploys on a merge. See the README for an
+# example call.
+#
+# It deploys only a commit on the default branch whose image
+# <service>-sha<commit> is in ECR. It never builds an image. The caller grants
+# contents: read and id-token: write.
+name: Deploy to ECS
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: The first part of the image tag, for example atlas.
+        type: string
+        required: true
+      commit:
+        description: The commit to deploy. Empty means the newest on the default branch.
+        type: string
+        default: ""
+      cluster:
+        description: The ECS cluster, for example prod-use1-web-ecs-cluster.
+        type: string
+        required: true
+      ecs-service:
+        description: >-
+          The ECS service, for example prod-use1-web-atlas-service. Empty
+          only with task-definition-only.
+        type: string
+        default: ""
+      task-definition:
+        description: The task definition family, for example prod-use1-web-atlas-task.
+        type: string
+        required: true
+      container:
+        description: The container that gets the new image, for example prod-use1-web-atlas.
+        type: string
+        required: true
+      container-env:
+        description: Environment variables to set in the container, one KEY=VALUE per line.
+        type: string
+        default: ""
+      task-definition-only:
+        description: >-
+          Registers the new task definition but deploys no service, for
+          tasks that something else starts.
+        type: boolean
+        default: false
+      environment:
+        type: string
+        default: production
+      wait-minutes:
+        description: How long to wait for the service to be stable.
+        type: number
+        default: 15
+      smoke-url:
+        description: A URL that must answer with a 2xx status after the deploy. Empty means no smoke check.
+        type: string
+        default: ""
+      aws-region:
+        type: string
+        default: us-east-1
+      aws-role:
+        type: string
+        default: arn:aws:iam::019120760881:role/prod-use1-github-oidc-role
+      ecr-registry:
+        type: string
+        default: 019120760881.dkr.ecr.us-east-1.amazonaws.com
+      ecr-repository:
+        type: string
+        default: probelab
+    secrets:
+      SLACK_WEBHOOK_URL:
+        description: Gets a message after every deploy. Empty means no message.
+        required: false
+    outputs:
+      commit:
+        description: The full commit that was deployed.
+        value: ${{ jobs.deploy.outputs.commit }}
+      image:
+        description: The image that was deployed.
+        value: ${{ jobs.deploy.outputs.image }}
+      task-definition-arn:
+        description: The new task definition.
+        value: ${{ jobs.deploy.outputs.task-definition-arn }}
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.ecs-service || inputs.task-definition }}
+    # Deploys hold prod credentials, so they never run on a self-hosted runner.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ inputs.environment }}
+    # One rollout at a time for each service. A newer deploy waits, and an
+    # older deploy that still waits is dropped.
+    concurrency:
+      group: deploy-${{ inputs.cluster }}-${{ inputs.ecs-service || inputs.task-definition }}
+      cancel-in-progress: false
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    outputs:
+      commit: ${{ steps.commit.outputs.sha }}
+      image: ${{ steps.image.outputs.image }}
+      task-definition-arn: ${{ steps.service.outputs.task-definition-arn || steps.register.outputs.task-definition-arn }}
+    steps:
+      - name: Finding the commit
+        id: commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
+          COMMIT: ${{ inputs.commit }}
+        run: |
+          set -euo pipefail
+          sha=$(gh api "repos/$REPO/commits/${COMMIT:-$DEFAULT_BRANCH}" --jq .sha)
+          # "behind" means the commit is an ancestor of the default branch.
+          status=$(gh api "repos/$REPO/compare/$DEFAULT_BRANCH...$sha" --jq .status)
+          if [[ "$status" != "identical" && "$status" != "behind" ]]; then
+            echo "::error::Commit $sha is not on $DEFAULT_BRANCH. Merge it first."
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Deploying $sha"
+
+      - name: Configuring AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ inputs.aws-region }}
+          role-to-assume: ${{ inputs.aws-role }}
+
+      - name: Finding the image
+        id: image
+        env:
+          REPOSITORY: ${{ inputs.ecr-repository }}
+          IMAGE: ${{ inputs.ecr-registry }}/${{ inputs.ecr-repository }}
+          SERVICE: ${{ inputs.service }}
+          SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          tag="$SERVICE-sha${SHA::7}"
+          if ! aws ecr describe-images --repository-name "$REPOSITORY" --image-ids imageTag="$tag" > /dev/null; then
+            echo "::error::There is no image $tag. Check that the CI run of this commit on the default branch passed."
+            exit 1
+          fi
+          echo "image=$IMAGE:$tag" >> "$GITHUB_OUTPUT"
+
+      # Takes the newest task definition, so a change that Terraform made to
+      # it, such as a new environment variable, goes out with this deploy.
+      - name: Downloading the task definition
+        id: current
+        env:
+          FAMILY: ${{ inputs.task-definition }}
+          CONTAINER: ${{ inputs.container }}
+        run: |
+          set -euo pipefail
+          aws ecs describe-task-definition --task-definition "$FAMILY" --query taskDefinition > current.json
+          image=$(jq -r --arg c "$CONTAINER" '.containerDefinitions[] | select(.name == $c) | .image' current.json)
+          if [[ -z "$image" ]]; then
+            echo "::error::The task definition $FAMILY has no container $CONTAINER."
+            exit 1
+          fi
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          jq 'del(.taskDefinitionArn, .requiresAttributes, .compatibilities, .revision, .status, .registeredAt, .registeredBy)' current.json > task-definition.json
+
+      - name: Setting the new image
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ inputs.container }}
+          image: ${{ steps.image.outputs.image }}
+          environment-variables: ${{ inputs.container-env }}
+
+      - name: Deploying the service
+        id: service
+        if: ${{ !inputs.task-definition-only }}
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          cluster: ${{ inputs.cluster }}
+          service: ${{ inputs.ecs-service }}
+          wait-for-service-stability: true
+          wait-for-minutes: ${{ inputs.wait-minutes }}
+          propagate-tags: SERVICE
+          enable-ecs-managed-tags: true
+
+      - name: Registering the task definition
+        id: register
+        if: inputs.task-definition-only
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          cluster: ${{ inputs.cluster }}
+
+      - name: Checking that the service answers
+        if: inputs.smoke-url != '' && !inputs.task-definition-only
+        env:
+          URL: ${{ inputs.smoke-url }}
+        run: |
+          for attempt in $(seq 1 10); do
+            if curl -fsS -o /dev/null -m 10 "$URL"; then
+              echo "$URL answered."
+              exit 0
+            fi
+            echo "Attempt $attempt: $URL did not answer. Trying again in 6 s."
+            sleep 6
+          done
+          echo "::error::$URL did not answer after the deploy. Roll back with the Deploy workflow and an older commit."
+          exit 1
+
+      # The message links the commits that this deploy brings: from the
+      # commit in the old image tag to the new commit.
+      - name: Writing the Slack message
+        id: message
+        if: always() && env.SLACK_WEBHOOK_URL != ''
+        env:
+          STATUS: ${{ job.status }}
+          REPO: ${{ github.repository }}
+          TARGET: ${{ inputs.ecs-service || inputs.task-definition }}
+          ACTOR: ${{ github.actor }}
+          OLD_IMAGE: ${{ steps.current.outputs.image }}
+          SHA: ${{ steps.commit.outputs.sha }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          short="${SHA::7}"
+          old=""
+          if [[ "$OLD_IMAGE" =~ -sha([0-9a-f]{7})$ ]]; then
+            old="${BASH_REMATCH[1]}"
+          fi
+          if [[ "$STATUS" == "success" ]]; then
+            text="Deployed $REPO@$short to $TARGET ($ACTOR)."
+          else
+            text="Deploy of $REPO@${short:-unknown} to $TARGET failed ($ACTOR). <$RUN|View the run>"
+          fi
+          if [[ -n "$old" && -n "$short" && "$old" != "$short" ]]; then
+            text="$text <https://github.com/$REPO/compare/$old...$short|Changes since $old>"
+          fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Posting to Slack
+        if: always() && env.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ env.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            text: ${{ toJSON(steps.message.outputs.text) }}

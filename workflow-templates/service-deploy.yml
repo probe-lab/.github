@@ -1,0 +1,29 @@
+# The Deploy button: deploys the image of one commit to ECS. Start it from
+# the Actions tab, or with `gh workflow run deploy.yml -f commit=<commit>`.
+# Save it as .github/workflows/deploy.yml.
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: The commit to deploy. Empty means the newest on the default branch.
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    uses: probe-lab/.github/.github/workflows/deploy-ecs.yml@v1
+    with:
+      service: ${{ github.event.repository.name }}
+      commit: ${{ inputs.commit }}
+      # Replace SERVICE with the names in probelab-infra.
+      cluster: prod-use1-cmi-ecs-cluster
+      ecs-service: prod-use1-cmi-SERVICE
+      task-definition: prod-use1-cmi-SERVICE-task
+      container: prod-use1-cmi-SERVICE
+    secrets: inherit
