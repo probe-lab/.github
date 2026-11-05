@@ -27,7 +27,21 @@ jobs:
       - name: Linting the workflows and templates
         run: |
           bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
-          ./actionlint -color .github/workflows/*.yml workflow-templates/*.yml
+          ./actionlint -color .github/workflows/*.yml
+
+          # Lints the templates as a repo holds them: in .github/workflows,
+          # with the Deploy template saved as deploy.yml, and calling the
+          # shared workflows of this commit, so a wrong input name fails here.
+          dir="$RUNNER_TEMP/templates"
+          mkdir -p "$dir/.github/workflows"
+          cp .github/workflows/{go,python,image,deploy-ecs,release,terraform}.yml "$dir/.github/workflows/"
+          for f in workflow-templates/*.yml; do
+            sed 's#probe-lab/.github/.github/workflows/\(.*\)\.yml@v1#./.github/workflows/\1.yml#' "$f" \
+              > "$dir/.github/workflows/template-$(basename "$f")"
+          done
+          cp "$dir/.github/workflows/template-service-deploy.yml" "$dir/.github/workflows/deploy.yml"
+          git -C "$dir" init -q
+          cd "$dir" && "$GITHUB_WORKSPACE/actionlint" -color .github/workflows/template-*.yml .github/workflows/deploy.yml
 
   go:
     uses: ./.github/workflows/go.yml

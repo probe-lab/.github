@@ -1,10 +1,11 @@
 # Deploys the image of one commit to one ECS service. A person starts it with
-# a repo's Deploy workflow; nothing deploys on a merge. See the README for an
-# example call.
+# a repo's Deploy workflow. A merge deploys only when its pull request has
+# the label that pr-label names. See the README for an example call.
 #
 # It deploys only a commit on the default branch whose image
-# <service>-sha<commit> is in ECR. It never builds an image. The caller grants
-# contents: read and id-token: write.
+# <service>-sha<commit> is in ECR. It never builds an image: while CI still
+# builds it, the deploy waits up to image-wait-minutes. The caller grants
+# contents: read and id-token: write, and pull-requests: read for pr-label.
 name: Deploy to ECS
 
 on:
@@ -16,6 +17,12 @@ on:
         required: true
       commit:
         description: The commit to deploy. Empty means the newest on the default branch.
+        type: string
+        default: ""
+      pr-label:
+        description: >-
+          Deploys only if the merged pull request of the commit has this
+          label, for example deploy. Empty means deploy without a check.
         type: string
         default: ""
       cluster:
@@ -53,6 +60,12 @@ on:
         description: How long to wait for the service to be stable.
         type: number
         default: 15
+      image-wait-minutes:
+        description: >-
+          How long to wait for the image of the commit while CI still builds
+          it. 0 means no wait.
+        type: number
+        default: 10
       smoke-url:
         description: A URL that must answer with a 2xx status after the deploy. Empty means no smoke check.
         type: string
@@ -85,11 +98,43 @@ on:
         value: ${{ jobs.deploy.outputs.task-definition-arn }}
 
 jobs:
+  # A separate job, so that a merge without the label creates no deployment
+  # in GitHub.
+  label:
+    name: Check the pull request label
+    if: inputs.pr-label != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      deploy: ${{ steps.label.outputs.deploy }}
+    steps:
+      - name: Checking the pull request
+        id: label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ inputs.commit || github.sha }}
+          LABEL: ${{ inputs.pr-label }}
+        run: |
+          set -euo pipefail
+          prs=$(gh api "repos/$REPO/commits/$SHA/pulls" | jq -r --arg label "$LABEL" \
+            '[.[] | select(.merged_at != null and any(.labels[]; .name == $label)) | "#\(.number)"] | join(", ")')
+          if [[ -n "$prs" ]]; then
+            echo "Pull request $prs has the label $LABEL. Deploying ${SHA::7}."
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No merged pull request of ${SHA::7} has the label $LABEL. Nothing deploys."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+
   deploy:
     name: Deploy ${{ inputs.ecs-service || inputs.task-definition }}
+    needs: label
+    # Runs when there is no label to check, or when the pull request has it.
+    if: ${{ !cancelled() && (needs.label.result == 'skipped' || needs.label.outputs.deploy == 'true') }}
     # Deploys hold prod credentials, so they never run on a self-hosted runner.
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     environment: ${{ inputs.environment }}
     # One rollout at a time for each service. A newer deploy waits, and an
     # older deploy that still waits is dropped.
@@ -128,6 +173,8 @@ jobs:
           aws-region: ${{ inputs.aws-region }}
           role-to-assume: ${{ inputs.aws-role }}
 
+      # CI pushes the image after the tests pass. A deploy started right
+      # after a merge waits for it.
       - name: Finding the image
         id: image
         env:
@@ -135,12 +182,22 @@ jobs:
           IMAGE: ${{ inputs.ecr-registry }}/${{ inputs.ecr-repository }}
           SERVICE: ${{ inputs.service }}
           SHA: ${{ steps.commit.outputs.sha }}
+          WAIT_MINUTES: ${{ inputs.image-wait-minutes }}
         run: |
           tag="$SERVICE-sha${SHA::7}"
-          if ! aws ecr describe-images --repository-name "$REPOSITORY" --image-ids imageTag="$tag" > /dev/null; then
-            echo "::error::There is no image $tag. Check that the CI run of this commit on the default branch passed."
-            exit 1
-          fi
+          deadline=$((SECONDS + WAIT_MINUTES * 60))
+          until aws ecr describe-images --repository-name "$REPOSITORY" --image-ids imageTag="$tag" > /dev/null 2> ecr-error.txt; do
+            if ! grep -q ImageNotFoundException ecr-error.txt; then
+              echo "::error::$(cat ecr-error.txt)"
+              exit 1
+            fi
+            if (( SECONDS >= deadline )); then
+              echo "::error::There is no image $tag after $WAIT_MINUTES minutes. Check that the CI run of this commit on the default branch passed."
+              exit 1
+            fi
+            echo "$tag is not in ECR yet. CI may still be running. Checking again in 20 s."
+            sleep 20
+          done
           echo "image=$IMAGE:$tag" >> "$GITHUB_OUTPUT"
 
       # Takes the newest task definition, so a change that Terraform made to

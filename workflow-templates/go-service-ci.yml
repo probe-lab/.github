@@ -1,5 +1,6 @@
 # CI for a Go service: lints and tests every pull request, and builds the
-# image of every merge. Nothing deploys here; the Deploy workflow does that.
+# image of every merge. A merge deploys only when its pull request has the
+# label "deploy"; otherwise a person deploys with the Deploy workflow.
 name: CI
 
 on:
@@ -36,6 +37,21 @@ jobs:
       runner: ${{ vars.RUNNER_LABEL }}
       service: ${{ github.event.repository.name }}
       push: ${{ github.event_name == 'push' }}
+
+  # Deploys a merge when its pull request has the label "deploy". Without the
+  # label, a person deploys with the Deploy workflow.
+  deploy:
+    needs: image
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: read
+    uses: ./.github/workflows/deploy.yml
+    with:
+      commit: ${{ github.sha }}
+      pr-label: deploy
+    secrets: inherit
 
   # The one required check. It passes when every job passed or was skipped.
   ci-ok:

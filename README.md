@@ -6,7 +6,8 @@ none of their own. The plan behind it is the Notion page "ProbeLab CI,
 release and deploy strategy".
 
 In short: a pull request runs the checks, a merge builds one image, and a
-person deploys that image with one click. Nothing deploys on a merge.
+person deploys that image with one click. A merge deploys only when its pull
+request has the label `deploy`.
 
 ## What is here
 
@@ -30,7 +31,8 @@ Each workflow lists all of its inputs at the top of its file.
 
 Repos call the workflows with a major version, `@v1`. A service repo has 2
 files: `ci.yml` checks every pull request and builds the image of every
-merge, and `deploy.yml` is the Deploy button. Start from the templates: in
+merge, and `deploy.yml` is the Deploy button. `ci.yml` also calls
+`deploy.yml` after a merge with the label `deploy`. Start from the templates: in
 the repo, open Actions, then New workflow, and pick a ProbeLab template.
 
 ### A Go service
@@ -196,8 +198,10 @@ jobs:
 ### The Deploy button
 
 `deploy.yml` deploys the newest commit on the default branch, or the commit
-that the person names. It stops if the commit is not on the default branch,
-or if its image is not in ECR. The template is
+that the person names. It stops if the commit is not on the default branch.
+If the image of the commit is not in ECR yet, because CI still builds it, the
+deploy waits up to 10 minutes (`image-wait-minutes`) and then stops. So a
+person can press Deploy right after a merge. The template is
 `workflow-templates/service-deploy.yml`. A repo with several services uses a
 matrix; each service gets its own rollout:
 
@@ -232,6 +236,34 @@ deploy commit="":
 ```
 
 To roll back, deploy an older commit.
+
+### Deploy a merge with a label
+
+To deploy a pull request as soon as it merges, add the label `deploy` to it
+before the merge. After the merge, CI tests the commit and builds its image
+as usual, then calls `deploy.yml` for that commit. A merge without the label
+deploys nothing. In `ci.yml`:
+
+```yaml
+  deploy:
+    needs: image
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: read
+    uses: ./.github/workflows/deploy.yml
+    with:
+      commit: ${{ github.sha }}
+      pr-label: deploy
+    secrets: inherit
+```
+
+For this, `deploy.yml` also has a `workflow_call` trigger with the inputs
+`commit` and `pr-label`, and grants `pull-requests: read`. It passes both to
+`deploy-ecs.yml`, as the template does. `deploy-ecs.yml` checks the label in
+a job of its own, so a merge without the label shows no deployment in
+GitHub.
 
 ### A release
 
@@ -316,7 +348,8 @@ self-hosted machine is down, delete the org variable `RUNNER_LABEL`.
 ## Move a repo
 
 1. Replace the repo's workflows with `ci.yml` and, for a service,
-   `deploy.yml`. Delete the old files.
+   `deploy.yml`. Delete the old files. For a service, also create the label
+   `deploy` (Issues, Labels, New label).
 2. atlas and data-platform: remove the deploy on merge. Steps that only one
    repo needs stay in that repo's own jobs, for example the atlas upload of
    static files and the Cloudflare purge around its deploy.
