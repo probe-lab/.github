@@ -84,7 +84,7 @@ jobs:
       # A pull request builds its head commit, not the merge commit, so the
       # tag names a commit that exists in the repo.
       - name: Checking out the code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: ${{ inputs.fetch-depth }}
@@ -110,7 +110,7 @@ jobs:
 
       - name: Configuring AWS credentials
         if: inputs.push
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-region: ${{ inputs.aws-region }}
           role-to-assume: ${{ inputs.aws-role }}
@@ -139,13 +139,13 @@ jobs:
       # driver.
       - name: Setting up Docker Buildx
         if: steps.exists.outputs.exists != 'true'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         with:
           driver: ${{ runner.environment == 'self-hosted' && 'docker' || 'docker-container' }}
 
       - name: Building the image
         if: steps.exists.outputs.exists != 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}

@@ -54,7 +54,7 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
     steps:
       - name: Checking out the code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # A secret value can hold any character, so each one is written with
       # its own random delimiter.
@@ -73,20 +73,20 @@ jobs:
           done < <(jq -r 'keys[] | select(startswith("TF_VAR_"))' <<< "$SECRETS")
 
       - name: Configuring AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-region: ${{ inputs.aws-region }}
           role-to-assume: ${{ inputs.aws-role }}
 
       - name: Configuring GCP credentials
         if: inputs.gcp-service-account != ''
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           service_account: ${{ inputs.gcp-service-account }}
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_POOL }}
 
       - name: Setting up Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ inputs.terraform-version }}
           terraform_wrapper: false
@@ -146,7 +146,7 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
     steps:
       - name: Checking out the code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Turning the TF_VAR_ secrets into variables
         env:
@@ -163,20 +163,20 @@ jobs:
           done < <(jq -r 'keys[] | select(startswith("TF_VAR_"))' <<< "$SECRETS")
 
       - name: Configuring AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-region: ${{ inputs.aws-region }}
           role-to-assume: ${{ inputs.aws-role }}
 
       - name: Configuring GCP credentials
         if: inputs.gcp-service-account != ''
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           service_account: ${{ inputs.gcp-service-account }}
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_POOL }}
 
       - name: Setting up Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ inputs.terraform-version }}
           terraform_wrapper: false
