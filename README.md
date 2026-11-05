@@ -57,6 +57,10 @@ jobs:
 The whole file, with the `ci-ok` job that branch rules require, is
 `workflow-templates/go-service-ci.yml`.
 
+A repo whose `just lint` runs golangci-lint sets `golangci-lint` to the
+version to install, for example `golangci-lint: v2.15`. Other tools come
+from `go-tools`, which installs them with `go install`.
+
 A repo with more needs sets more inputs. nebula needs gofumpt, a ClickHouse
 with its own user, its own name for the port, and a check of the release
 build:
@@ -88,6 +92,11 @@ secret `github_token`:
     secrets:
       GO_PRIVATE_TOKEN: ${{ secrets.REPO_PROBE_LAB_API_READ }}
 ```
+
+In the Dockerfile, read the token only in the `RUN --mount=type=secret` step
+that downloads the modules. Self-hosted runners keep the build cache, so a
+token that a step writes to a file, such as a git config, stays on the
+machine.
 
 ### A Python service
 
@@ -122,6 +131,66 @@ data-platform builds 3 images, one for each Dagster component:
       service: dagster-${{ matrix.component }}
       dockerfile: Dockerfile.${{ matrix.component }}
       push: ${{ github.event_name == 'push' }}
+```
+
+### Several services from one Dockerfile
+
+api builds 5 services from one Dockerfile, and the build argument `SERVICE`
+selects the service. The tags keep api's `<service>service` names, because
+the nebula and ants-watch repos push `nebula-` and `ants-` tags to the same
+ECR repository. Every merge builds all 5 images, so every service can deploy
+every commit:
+
+```yaml
+  go:
+    uses: probe-lab/.github/.github/workflows/go.yml@v1
+    with:
+      runner: ${{ vars.RUNNER_LABEL }}
+      golangci-lint: v2.15
+      go-tools: github.com/bufbuild/buf/cmd/buf@v1.75.0
+      test-command: just test && just test-integration
+
+  image:
+    needs: go
+    strategy:
+      matrix:
+        service: [api, ants, geoip, nebula, probe]
+    permissions:
+      contents: read
+      id-token: write
+    uses: probe-lab/.github/.github/workflows/image.yml@v1
+    with:
+      runner: ${{ vars.RUNNER_LABEL }}
+      service: ${{ matrix.service }}service
+      build-args: SERVICE=${{ matrix.service }}
+      push: ${{ github.event_name == 'push' }}
+```
+
+Its Deploy button asks for the service:
+
+```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        type: choice
+        options: [api, ants, geoip, nebula, probe]
+      commit:
+        description: The commit to deploy. Empty means the newest on the default branch.
+        type: string
+        required: false
+
+jobs:
+  deploy:
+    uses: probe-lab/.github/.github/workflows/deploy-ecs.yml@v1
+    with:
+      service: ${{ inputs.service }}service
+      commit: ${{ inputs.commit }}
+      cluster: prod-use1-web-ecs-cluster
+      ecs-service: prod-use1-web-${{ inputs.service }}-service
+      task-definition: prod-use1-web-${{ inputs.service }}-task
+      container: prod-use1-web-${{ inputs.service }}
+    secrets: inherit
 ```
 
 ### The Deploy button

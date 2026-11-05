@@ -23,6 +23,8 @@ jobs:
     with:
       # Empty in a public repo, which then uses GitHub-hosted runners.
       runner: ${{ vars.RUNNER_LABEL }}
+      # Set it when `just lint` runs golangci-lint.
+      # golangci-lint: v2.15
 
   image:
     needs: go

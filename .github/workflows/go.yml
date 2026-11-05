@@ -21,6 +21,12 @@ on:
           spaces, for example mvdan.cc/gofumpt@v0.12.0.
         type: string
         default: ""
+      golangci-lint:
+        description: >-
+          Installs this golangci-lint version before the lint, for example
+          v2.15. The lint command runs it. Empty means no golangci-lint.
+        type: string
+        default: ""
       lint-command:
         type: string
         default: just lint
@@ -135,6 +141,17 @@ jobs:
           for tool in $TOOLS; do
             go install "$tool"
           done
+
+      # Installs the release binary, because golangci-lint advises against
+      # go install. It only installs; the lint command runs it.
+      - name: Installing golangci-lint
+        if: inputs.golangci-lint != ''
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: ${{ inputs.golangci-lint }}
+          install-only: true
+          working-directory: ${{ inputs.working-directory }}
+          skip-cache: ${{ runner.environment != 'github-hosted' }}
 
       - name: Linting
         run: ${{ inputs.lint-command }}

@@ -35,6 +35,8 @@ jobs:
       runner: ubuntu-latest
       working-directory: tests/go
       clickhouse: true
+      golangci-lint: v2.15
+      lint-command: just lint && golangci-lint run ./...
 
   python:
     uses: ./.github/workflows/python.yml
