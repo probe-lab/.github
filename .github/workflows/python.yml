@@ -84,26 +84,26 @@ jobs:
           --health-retries 5
     steps:
       - name: Checking out the code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           lfs: ${{ inputs.lfs }}
 
       # A self-hosted runner keeps the uv cache on its disk, so only
       # GitHub-hosted runners use the GitHub cache.
       - name: Setting up uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           version: ${{ inputs.uv-version }}
           enable-cache: ${{ runner.environment == 'github-hosted' }}
           working-directory: ${{ inputs.working-directory }}
 
       - name: Setting up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version-file: ${{ inputs.working-directory }}/.python-version
 
       - name: Setting up just
-        uses: extractions/setup-just@v3
+        uses: extractions/setup-just@v4
 
       - name: Installing the dependencies
         id: sync

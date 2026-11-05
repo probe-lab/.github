@@ -95,7 +95,7 @@ jobs:
           --health-retries 5
     steps:
       - name: Checking out the code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # A self-hosted runner keeps the Go caches on its disk, so only
       # GitHub-hosted runners use the GitHub cache.
@@ -107,7 +107,7 @@ jobs:
           cache-dependency-path: ${{ inputs.working-directory }}/go.sum
 
       - name: Setting up just
-        uses: extractions/setup-just@v3
+        uses: extractions/setup-just@v4
 
       # The git settings go into the job's environment, not into a file, so
       # the token does not stay on a self-hosted runner after the job.
@@ -159,7 +159,7 @@ jobs:
     steps:
       # The full history has the tags that go build reads the version from.
       - name: Checking out the code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -187,7 +187,7 @@ jobs:
           echo "GOPRIVATE=$MODULES" >> "$GITHUB_ENV"
 
       - name: Building the release binaries
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: "~> v2"
