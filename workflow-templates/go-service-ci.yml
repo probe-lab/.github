@@ -1,6 +1,5 @@
-# CI for a Go service: lints and tests every pull request, and builds the
-# image of every merge. A merge deploys only when its pull request has the
-# label "deploy"; otherwise a person deploys with the Deploy workflow.
+# CI for a Go service: runs `just ci` on every pull request, and builds the
+# image of every merge. Nothing deploys here: see deploy.yml.
 name: CI
 
 on:
@@ -18,46 +17,47 @@ permissions:
   contents: read
 
 jobs:
-  go:
+  # Runs the repo's own checks, the same ones a person runs with `just ci`.
+  # Extras that only this repo needs, such as a service container, go here.
+  check:
+    name: Checking the code
     if: github.event.pull_request.draft != true
-    uses: probe-lab/.github/.github/workflows/go.yml@v1
-    with:
-      # Empty in a public repo, which then uses GitHub-hosted runners.
-      runner: ${{ vars.RUNNER_LABEL }}
-      # Set it when `just lint` runs golangci-lint.
-      # golangci-lint: v2.15
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    steps:
+      - name: Checking out the code
+        uses: actions/checkout@v7
+
+      # A self-hosted runner keeps the Go caches on its disk, so only
+      # GitHub-hosted runners use the GitHub cache.
+      - name: Setting up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: ${{ runner.environment == 'github-hosted' }}
+
+      - name: Setting up just
+        uses: extractions/setup-just@v4
+
+      - name: Running the checks
+        run: just ci
 
   image:
-    needs: go
+    name: Building the image
+    needs: check
     permissions:
       contents: read
       id-token: write
-    uses: probe-lab/.github/.github/workflows/image.yml@v1
+    uses: probe-lab/.github/.github/workflows/image.yml@v2
     with:
-      runner: ${{ vars.RUNNER_LABEL }}
       service: ${{ github.event.repository.name }}
       push: ${{ github.event_name == 'push' }}
-
-  # Deploys a merge when its pull request has the label "deploy". Without the
-  # label, a person deploys with the Deploy workflow.
-  deploy:
-    needs: image
-    if: github.event_name == 'push'
-    permissions:
-      contents: read
-      id-token: write
-      pull-requests: read
-    uses: ./.github/workflows/deploy.yml
-    with:
-      commit: ${{ github.sha }}
-      pr-label: deploy
-    secrets: inherit
 
   # The one required check. It passes when every job passed or was skipped.
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [go, image]
+    needs: [check, image]
     runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     steps:
       - name: Checking that every job passed

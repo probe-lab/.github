@@ -1,4 +1,4 @@
-# CI for a Go library or tool that has no image: lints and tests every pull
+# CI for a Go library or tool that has no image: runs `just ci` on every pull
 # request and every merge.
 name: CI
 
@@ -17,20 +17,36 @@ permissions:
   contents: read
 
 jobs:
-  go:
+  # Runs the repo's own checks, the same ones a person runs with `just ci`.
+  # Extras that only this repo needs, such as a service container, go here.
+  check:
+    name: Checking the code
     if: github.event.pull_request.draft != true
-    uses: probe-lab/.github/.github/workflows/go.yml@v1
-    with:
-      # Empty in a public repo, which then uses GitHub-hosted runners.
-      runner: ${{ vars.RUNNER_LABEL }}
-      # Set it when `just lint` runs golangci-lint.
-      # golangci-lint: v2.15
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    steps:
+      - name: Checking out the code
+        uses: actions/checkout@v7
+
+      # A self-hosted runner keeps the Go caches on its disk, so only
+      # GitHub-hosted runners use the GitHub cache.
+      - name: Setting up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: ${{ runner.environment == 'github-hosted' }}
+
+      - name: Setting up just
+        uses: extractions/setup-just@v4
+
+      - name: Running the checks
+        run: just ci
 
   # The one required check. It passes when every job passed or was skipped.
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [go]
+    needs: [check]
     runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     steps:
       - name: Checking that every job passed

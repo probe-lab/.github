@@ -1,7 +1,13 @@
-# The Deploy button: deploys the image of one commit to ECS. Start it from
-# the Actions tab, or with `gh workflow run deploy.yml -f commit=<commit>`.
-# ci.yml also calls it after a merge whose pull request has the label
-# "deploy". Save it as .github/workflows/deploy.yml.
+# The Deploy workflow: deploys the image of one commit to ECS. Save it as
+# .github/workflows/deploy.yml.
+#
+# It starts in 2 ways:
+#   - A person starts it from the Actions tab, or with
+#     `gh workflow run deploy.yml -f commit=<commit>`. It deploys without a
+#     check.
+#   - A CI run on the default branch finishes. It deploys only when the merged
+#     pull request has the label "deploy".
+# A repo without this file never deploys.
 name: Deploy
 
 on:
@@ -11,14 +17,10 @@ on:
         description: The commit to deploy. Empty means the newest on the default branch.
         type: string
         required: false
-  workflow_call:
-    inputs:
-      commit:
-        type: string
-        required: true
-      pr-label:
-        type: string
-        default: ""
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [$default-branch]
 
 permissions:
   contents: read
@@ -27,11 +29,14 @@ permissions:
 
 jobs:
   deploy:
-    uses: probe-lab/.github/.github/workflows/deploy-ecs.yml@v1
+    name: Deploying
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    uses: probe-lab/.github/.github/workflows/deploy-ecs.yml@v2
     with:
       service: ${{ github.event.repository.name }}
       commit: ${{ inputs.commit }}
-      pr-label: ${{ inputs.pr-label }}
       # Replace SERVICE with the names in probelab-infra.
       cluster: prod-use1-cmi-ecs-cluster
       ecs-service: prod-use1-cmi-SERVICE
