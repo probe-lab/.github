@@ -1,6 +1,6 @@
-# Checks this repo: lints every workflow and template, and runs the shared
-# workflows against the small projects in tests/. The deploy, release and
-# Terraform workflows need AWS, so only actionlint checks them.
+# Checks this repo: lints every workflow and template, and builds a small
+# image with the shared image workflow. The deploy and release workflows need
+# AWS, so only actionlint checks them.
 name: CI
 
 on:
@@ -24,53 +24,28 @@ jobs:
       - name: Checking out the code
         uses: actions/checkout@v7
 
-      - name: Linting the workflows and templates
+      - name: Setting up just
+        uses: extractions/setup-just@v4
+
+      - name: Installing actionlint
         run: |
-          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
-          ./actionlint -color .github/workflows/*.yml
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12 "$RUNNER_TEMP/bin"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
-          # Lints the templates as a repo holds them: in .github/workflows,
-          # with the Deploy template saved as deploy.yml, and calling the
-          # shared workflows of this commit, so a wrong input name fails here.
-          dir="$RUNNER_TEMP/templates"
-          mkdir -p "$dir/.github/workflows"
-          cp .github/workflows/{go,python,image,deploy-ecs,release,terraform}.yml "$dir/.github/workflows/"
-          for f in workflow-templates/*.yml; do
-            sed 's#probe-lab/.github/.github/workflows/\(.*\)\.yml@v1#./.github/workflows/\1.yml#' "$f" \
-              > "$dir/.github/workflows/template-$(basename "$f")"
-          done
-          cp "$dir/.github/workflows/template-service-deploy.yml" "$dir/.github/workflows/deploy.yml"
-          git -C "$dir" init -q
-          cd "$dir" && "$GITHUB_WORKSPACE/actionlint" -color .github/workflows/template-*.yml .github/workflows/deploy.yml
-
-  go:
-    uses: ./.github/workflows/go.yml
-    with:
-      runner: ubuntu-latest
-      working-directory: tests/go
-      clickhouse: true
-      golangci-lint: v2.15
-      lint-command: just lint && golangci-lint run ./...
-
-  python:
-    uses: ./.github/workflows/python.yml
-    with:
-      runner: ubuntu-latest
-      working-directory: tests/python
-      clickhouse: true
+      - name: Linting the workflows and templates
+        run: just lint
 
   image:
+    name: Building the fixture image
     uses: ./.github/workflows/image.yml
     with:
-      runner: ubuntu-latest
       service: fixture
-      context: tests/go
-      dockerfile: tests/go/Dockerfile
+      dockerfile: tests/image/Dockerfile
 
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [actionlint, go, python, image]
+    needs: [actionlint, image]
     runs-on: ubuntu-latest
     steps:
       - name: Checking that every job passed

@@ -3,7 +3,9 @@
 # Without push, it only checks that the image builds. See the README for an
 # example call.
 #
-# The caller grants id-token: write when push is true.
+# The image goes to the ProbeLab ECR repository, and the build runs on the
+# RUNNER_LABEL runner when the repo has that variable. The caller grants
+# id-token: write when push is true.
 name: Image
 
 on:
@@ -17,17 +19,8 @@ on:
         description: Pushes the image to ECR. Without it, the image is only built.
         type: boolean
         default: false
-      runner:
-        description: >-
-          The runner label. Empty means the RUNNER_LABEL variable, then
-          ubuntu-latest. Public repos pass ubuntu-latest.
-        type: string
-        default: ""
-      context:
-        type: string
-        default: "."
       dockerfile:
-        description: The Dockerfile, as a path from the repo root.
+        description: The Dockerfile, as a path from the repo root. The build context is the repo root.
         type: string
         default: Dockerfile
       build-args:
@@ -37,33 +30,6 @@ on:
       platforms:
         type: string
         default: linux/amd64
-      fetch-depth:
-        description: >-
-          The git history to check out. 0 means all of it, which a build
-          needs when go build reads the version from the tags.
-        type: number
-        default: 1
-      aws-region:
-        type: string
-        default: us-east-1
-      aws-role:
-        type: string
-        default: arn:aws:iam::019120760881:role/prod-use1-github-oidc-role
-      ecr-registry:
-        type: string
-        default: 019120760881.dkr.ecr.us-east-1.amazonaws.com
-      ecr-repository:
-        type: string
-        default: probelab
-      timeout-minutes:
-        type: number
-        default: 45
-    secrets:
-      GO_PRIVATE_TOKEN:
-        description: >-
-          Given to the build as the secret github_token, for Dockerfiles
-          that download private Go modules.
-        required: false
     outputs:
       image:
         description: The image with its commit tag, for example 0191.../probelab:atlas-sha1a2b3c4.
@@ -72,28 +38,35 @@ on:
         description: The commit tag, for example atlas-sha1a2b3c4.
         value: ${{ jobs.image.outputs.tag }}
 
+env:
+  AWS_REGION: us-east-1
+  AWS_ROLE: arn:aws:iam::019120760881:role/prod-use1-github-oidc-role
+  ECR_REGISTRY: 019120760881.dkr.ecr.us-east-1.amazonaws.com
+  ECR_REPOSITORY: probelab
+
 jobs:
   image:
     name: Image
-    runs-on: ${{ inputs.runner || vars.RUNNER_LABEL || 'ubuntu-latest' }}
-    timeout-minutes: ${{ inputs.timeout-minutes }}
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    timeout-minutes: 45
     outputs:
       image: ${{ steps.tags.outputs.image }}
       tag: ${{ steps.tags.outputs.tag }}
     steps:
       # A pull request builds its head commit, not the merge commit, so the
-      # tag names a commit that exists in the repo.
+      # tag names a commit that exists in the repo. The full history has the
+      # tags that go build reads the version from.
       - name: Checking out the code
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: ${{ inputs.fetch-depth }}
+          fetch-depth: 0
 
       - name: Computing the image tags
         id: tags
         env:
           SERVICE: ${{ inputs.service }}
-          IMAGE: ${{ inputs.ecr-registry }}/${{ inputs.ecr-repository }}
+          IMAGE: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}
           SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           PR: ${{ github.event.pull_request.number }}
         run: |
@@ -112,8 +85,8 @@ jobs:
         if: inputs.push
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          aws-region: ${{ inputs.aws-region }}
-          role-to-assume: ${{ inputs.aws-role }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_ROLE }}
 
       - name: Logging in to Amazon ECR
         if: inputs.push
@@ -125,7 +98,7 @@ jobs:
         id: exists
         if: inputs.push && github.event_name != 'pull_request'
         env:
-          REPOSITORY: ${{ inputs.ecr-repository }}
+          REPOSITORY: ${{ env.ECR_REPOSITORY }}
           TAG: ${{ steps.tags.outputs.tag }}
         run: |
           if aws ecr describe-images --repository-name "$REPOSITORY" --image-ids imageTag="$TAG" > /dev/null 2>&1; then
@@ -147,11 +120,9 @@ jobs:
         if: steps.exists.outputs.exists != 'true'
         uses: docker/build-push-action@v7
         with:
-          context: ${{ inputs.context }}
+          context: .
           file: ${{ inputs.dockerfile }}
           platforms: ${{ inputs.platforms }}
           build-args: ${{ inputs.build-args }}
-          secrets: |
-            github_token=${{ secrets.GO_PRIVATE_TOKEN }}
           push: ${{ inputs.push }}
           tags: ${{ steps.tags.outputs.tags }}

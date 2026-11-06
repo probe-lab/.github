@@ -1,11 +1,13 @@
-# Deploys the image of one commit to one ECS service. A person starts it with
-# a repo's Deploy workflow. A merge deploys only when its pull request has
-# the label that pr-label names. See the README for an example call.
+# Deploys the image of one commit to one ECS service. Two events start it in
+# the caller: a person pressing the Deploy button (workflow_dispatch), and a
+# finished CI run on the default branch (workflow_run). The button deploys
+# without a check. A CI run deploys only when the merged pull request of the
+# commit has the label deploy. See the README for an example call.
 #
 # It deploys only a commit on the default branch whose image
 # <service>-sha<commit> is in ECR. It never builds an image: while CI still
-# builds it, the deploy waits up to image-wait-minutes. The caller grants
-# contents: read and id-token: write, and pull-requests: read for pr-label.
+# builds it, the deploy waits up to 10 minutes. The caller grants
+# contents: read, id-token: write and pull-requests: read.
 name: Deploy to ECS
 
 on:
@@ -17,12 +19,6 @@ on:
         required: true
       commit:
         description: The commit to deploy. Empty means the newest on the default branch.
-        type: string
-        default: ""
-      pr-label:
-        description: >-
-          Deploys only if the merged pull request of the commit has this
-          label, for example deploy. Empty means deploy without a check.
         type: string
         default: ""
       cluster:
@@ -53,35 +49,6 @@ on:
           tasks that something else starts.
         type: boolean
         default: false
-      environment:
-        type: string
-        default: production
-      wait-minutes:
-        description: How long to wait for the service to be stable.
-        type: number
-        default: 15
-      image-wait-minutes:
-        description: >-
-          How long to wait for the image of the commit while CI still builds
-          it. 0 means no wait.
-        type: number
-        default: 10
-      smoke-url:
-        description: A URL that must answer with a 2xx status after the deploy. Empty means no smoke check.
-        type: string
-        default: ""
-      aws-region:
-        type: string
-        default: us-east-1
-      aws-role:
-        type: string
-        default: arn:aws:iam::019120760881:role/prod-use1-github-oidc-role
-      ecr-registry:
-        type: string
-        default: 019120760881.dkr.ecr.us-east-1.amazonaws.com
-      ecr-repository:
-        type: string
-        default: probelab
     outputs:
       commit:
         description: The full commit that was deployed.
@@ -93,12 +60,22 @@ on:
         description: The new task definition.
         value: ${{ jobs.deploy.outputs.task-definition-arn }}
 
+env:
+  AWS_REGION: us-east-1
+  AWS_ROLE: arn:aws:iam::019120760881:role/prod-use1-github-oidc-role
+  ECR_REGISTRY: 019120760881.dkr.ecr.us-east-1.amazonaws.com
+  ECR_REPOSITORY: probelab
+  # CI pushes the image after the tests pass. A deploy started right after a
+  # merge waits that long for it.
+  IMAGE_WAIT_MINUTES: 10
+  SERVICE_WAIT_MINUTES: 15
+
 jobs:
   # A separate job, so that a merge without the label creates no deployment
-  # in GitHub.
+  # in GitHub. The button skips it.
   label:
     name: Check the pull request label
-    if: inputs.pr-label != ''
+    if: github.event_name == 'workflow_run'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -109,8 +86,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          SHA: ${{ inputs.commit || github.sha }}
-          LABEL: ${{ inputs.pr-label }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          LABEL: deploy
         run: |
           set -euo pipefail
           prs=$(gh api "repos/$REPO/commits/$SHA/pulls" | jq -r --arg label "$LABEL" \
@@ -131,7 +108,7 @@ jobs:
     # Deploys hold prod credentials, so they never run on a self-hosted runner.
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    environment: ${{ inputs.environment }}
+    environment: production
     # One rollout at a time for each service. A newer deploy waits, and an
     # older deploy that still waits is dropped.
     concurrency:
@@ -148,7 +125,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
-          COMMIT: ${{ inputs.commit }}
+          COMMIT: ${{ github.event.workflow_run.head_sha || inputs.commit }}
         run: |
           set -euo pipefail
           sha=$(gh api "repos/$REPO/commits/${COMMIT:-$DEFAULT_BRANCH}" --jq .sha)
@@ -164,19 +141,19 @@ jobs:
       - name: Configuring AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          aws-region: ${{ inputs.aws-region }}
-          role-to-assume: ${{ inputs.aws-role }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_ROLE }}
 
       # CI pushes the image after the tests pass. A deploy started right
       # after a merge waits for it.
       - name: Finding the image
         id: image
         env:
-          REPOSITORY: ${{ inputs.ecr-repository }}
-          IMAGE: ${{ inputs.ecr-registry }}/${{ inputs.ecr-repository }}
+          REPOSITORY: ${{ env.ECR_REPOSITORY }}
+          IMAGE: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}
           SERVICE: ${{ inputs.service }}
           SHA: ${{ steps.commit.outputs.sha }}
-          WAIT_MINUTES: ${{ inputs.image-wait-minutes }}
+          WAIT_MINUTES: ${{ env.IMAGE_WAIT_MINUTES }}
         run: |
           tag="$SERVICE-sha${SHA::7}"
           deadline=$((SECONDS + WAIT_MINUTES * 60))
@@ -230,7 +207,7 @@ jobs:
           cluster: ${{ inputs.cluster }}
           service: ${{ inputs.ecs-service }}
           wait-for-service-stability: true
-          wait-for-minutes: ${{ inputs.wait-minutes }}
+          wait-for-minutes: ${{ env.SERVICE_WAIT_MINUTES }}
           propagate-tags: SERVICE
           enable-ecs-managed-tags: true
 
@@ -241,19 +218,3 @@ jobs:
         with:
           task-definition: ${{ steps.render.outputs.task-definition }}
           cluster: ${{ inputs.cluster }}
-
-      - name: Checking that the service answers
-        if: inputs.smoke-url != '' && !inputs.task-definition-only
-        env:
-          URL: ${{ inputs.smoke-url }}
-        run: |
-          for attempt in $(seq 1 10); do
-            if curl -fsS -o /dev/null -m 10 "$URL"; then
-              echo "$URL answered."
-              exit 0
-            fi
-            echo "Attempt $attempt: $URL did not answer. Trying again in 6 s."
-            sleep 6
-          done
-          echo "::error::$URL did not answer after the deploy. Roll back with the Deploy workflow and an older commit."
-          exit 1
