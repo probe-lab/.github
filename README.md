@@ -362,6 +362,13 @@ self-hosted machine is down, delete the org variable `RUNNER_LABEL`.
 5. After the first green run, add `ci-ok` to the required checks of the org
    ruleset.
 
+## Development
+
+`just` lists the recipes. `just lint` runs actionlint on the workflows and
+needs `actionlint` on the PATH. `just ci` runs the checks that can run
+locally. The build, test and format recipes have nothing to do here: CI runs
+the shared workflows against the projects in `tests/`.
+
 ## Change this repo
 
 1. Open a pull request. Its CI lints every workflow and template, and runs
