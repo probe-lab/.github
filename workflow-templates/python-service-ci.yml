@@ -1,0 +1,69 @@
+# CI for a Python service: runs `just ci` on every pull request, and builds
+# the image of every merge. Nothing deploys here: see deploy.yml.
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [$default-branch]
+
+# A new push to a pull request cancels its running checks.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # Runs the repo's own checks, the same ones a person runs with `just ci`.
+  # Extras that only this repo needs, such as a service container, go here.
+  check:
+    name: Checking the code
+    if: github.event.pull_request.draft != true
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    steps:
+      - name: Checking out the code
+        uses: actions/checkout@v7
+
+      # A self-hosted runner keeps the uv cache on its disk, so only
+      # GitHub-hosted runners use the GitHub cache.
+      - name: Setting up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: ${{ runner.environment == 'github-hosted' }}
+
+      - name: Setting up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+
+      - name: Setting up just
+        uses: extractions/setup-just@v4
+
+      - name: Running the checks
+        run: just ci
+
+  image:
+    name: Building the image
+    needs: check
+    permissions:
+      contents: read
+      id-token: write
+    uses: probe-lab/.github/.github/workflows/image.yml@v2
+    with:
+      service: ${{ github.event.repository.name }}
+      push: ${{ github.event_name == 'push' }}
+
+  # The one required check. It passes when every job passed or was skipped.
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [check, image]
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    steps:
+      - name: Checking that every job passed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

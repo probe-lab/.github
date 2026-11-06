@@ -1,7 +1,8 @@
 # Releases a version tag. Write the changes under "## [1.2.3]" in
-# CHANGELOG.md, then push the tag: `git tag v1.2.3 && git push origin v1.2.3`.
-# It tests the tagged commit, then publishes the release. To retry a release,
-# rerun the failed jobs of its run.
+# CHANGELOG.md, merge them, wait for CI, then push the tag:
+# `git tag v1.2.3 && git push origin v1.2.3`. The release fails unless CI
+# passed for the tagged commit. To retry a release, rerun the failed jobs of
+# its run.
 name: Release
 
 on:
@@ -12,19 +13,13 @@ permissions:
   contents: read
 
 jobs:
-  go:
-    uses: probe-lab/.github/.github/workflows/go.yml@v1
-    with:
-      runner: ${{ vars.RUNNER_LABEL }}
-
   release:
-    needs: go
+    name: Releasing
     permissions:
       contents: write
+      checks: read
       id-token: write
-    uses: probe-lab/.github/.github/workflows/release.yml@v1
+    uses: probe-lab/.github/.github/workflows/release.yml@v2
     with:
       tag: ${{ github.ref_name }}
-      # goreleaser: true
       # ecr-service: SERVICE
-    secrets: inherit

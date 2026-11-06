@@ -1,6 +1,6 @@
 {
   "name": "ProbeLab release",
-  "description": "Tests a version tag and publishes the GitHub release, with optional binaries and images.",
+  "description": "Publishes the GitHub release of a version tag whose commit passed CI, with binaries from goreleaser and an optional image.",
   "iconName": "octicon tag",
   "categories": ["Go"],
   "filePatterns": ["^CHANGELOG\\.md$"]
