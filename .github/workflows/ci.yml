@@ -29,6 +29,7 @@ jobs:
 
       - name: Installing actionlint
         run: |
+          mkdir -p "$RUNNER_TEMP/bin"
           bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12 "$RUNNER_TEMP/bin"
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
