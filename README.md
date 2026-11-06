@@ -23,7 +23,6 @@ request has the label `deploy`.
 | `PULL_REQUEST_TEMPLATE.md`, `SECURITY.md` | Defaults for every org repo that has no file of its own. |
 | `profile/README.md` | The public page of the org. |
 | `.github/workflows/ci.yml`, `tests/` | The CI of this repo. |
-| `.github/workflows/stale.yml`, `generated-pr.yml` | Housekeeping workflows from ipdx. |
 
 Each workflow lists all of its inputs at the top of its file.
 
@@ -335,14 +334,12 @@ self-hosted machine is down, delete the org variable `RUNNER_LABEL`.
 
 ## Set up the org, once
 
-1. Merge this repo and tag the first version: `git tag v1.0.0 && git tag v1
-   && git push origin v1.0.0 v1`.
-2. Create the org variable `RUNNER_LABEL` with the value `probelab-ci` and
+1. Create the org variable `RUNNER_LABEL` with the value `probelab-ci` and
    the repository access "Private repositories".
-3. In each service repo, create the environment `production` (Settings,
+2. In each service repo, create the environment `production` (Settings,
    Environments). Deploys run in it, and GitHub shows the live commit under
    Deployments on the repo page.
-4. Narrow the AWS trust in probelab-infra (`tf/oidc.tf`), as the strategy's
+3. Narrow the AWS trust in probelab-infra (`tf/oidc.tf`), as the strategy's
    first phase says.
 
 ## Move a repo
