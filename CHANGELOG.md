@@ -5,6 +5,15 @@ major version such as `@v1`. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Removed
+
+- `deploy-ecs.yml`: the `SLACK_WEBHOOK_URL` secret and the Slack message after
+  a deploy. A caller that passes `SLACK_WEBHOOK_URL:` under `secrets:` now
+  fails at startup. Remove that line. Callers with `secrets: inherit` are not
+  affected.
+
 ## [1.1.0]
 
 ### Added
