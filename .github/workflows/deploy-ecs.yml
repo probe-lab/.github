@@ -82,10 +82,6 @@ on:
       ecr-repository:
         type: string
         default: probelab
-    secrets:
-      SLACK_WEBHOOK_URL:
-        description: Gets a message after every deploy. Empty means no message.
-        required: false
     outputs:
       commit:
         description: The full commit that was deployed.
@@ -141,8 +137,6 @@ jobs:
     concurrency:
       group: deploy-${{ inputs.cluster }}-${{ inputs.ecs-service || inputs.task-definition }}
       cancel-in-progress: false
-    env:
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     outputs:
       commit: ${{ steps.commit.outputs.sha }}
       image: ${{ steps.image.outputs.image }}
@@ -263,41 +257,3 @@ jobs:
           done
           echo "::error::$URL did not answer after the deploy. Roll back with the Deploy workflow and an older commit."
           exit 1
-
-      # The message links the commits that this deploy brings: from the
-      # commit in the old image tag to the new commit.
-      - name: Writing the Slack message
-        id: message
-        if: always() && env.SLACK_WEBHOOK_URL != ''
-        env:
-          STATUS: ${{ job.status }}
-          REPO: ${{ github.repository }}
-          TARGET: ${{ inputs.ecs-service || inputs.task-definition }}
-          ACTOR: ${{ github.actor }}
-          OLD_IMAGE: ${{ steps.current.outputs.image }}
-          SHA: ${{ steps.commit.outputs.sha }}
-          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          short="${SHA::7}"
-          old=""
-          if [[ "$OLD_IMAGE" =~ -sha([0-9a-f]{7})$ ]]; then
-            old="${BASH_REMATCH[1]}"
-          fi
-          if [[ "$STATUS" == "success" ]]; then
-            text="Deployed $REPO@$short to $TARGET ($ACTOR)."
-          else
-            text="Deploy of $REPO@${short:-unknown} to $TARGET failed ($ACTOR). <$RUN|View the run>"
-          fi
-          if [[ -n "$old" && -n "$short" && "$old" != "$short" ]]; then
-            text="$text <https://github.com/$REPO/compare/$old...$short|Changes since $old>"
-          fi
-          echo "text=$text" >> "$GITHUB_OUTPUT"
-
-      - name: Posting to Slack
-        if: always() && env.SLACK_WEBHOOK_URL != ''
-        uses: slackapi/slack-github-action@v4
-        with:
-          webhook: ${{ env.SLACK_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            text: ${{ toJSON(steps.message.outputs.text) }}

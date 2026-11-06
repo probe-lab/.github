@@ -224,8 +224,8 @@ jobs:
 
 Other inputs: `container-env` sets environment variables in the container,
 `smoke-url` checks a URL after the deploy, and `task-definition-only`
-registers a task definition without a service deploy. `SLACK_WEBHOOK_URL`
-gets a message after every deploy, with a link to the commits it brings.
+registers a task definition without a service deploy. The workflow takes no
+secrets.
 
 To deploy from a terminal, add this recipe to the repo's justfile:
 
