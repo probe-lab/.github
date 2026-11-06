@@ -10,11 +10,11 @@ build:
 
 # Run the tests
 test:
-    @echo "nothing to test here: CI runs the shared workflows against tests/"
+    @echo "nothing to test here: CI builds the image in tests/image/"
 
 # Check the code without changing files
 lint:
-    actionlint .github/workflows/*.yml
+    ./scripts/lint.sh
 
 # Format the code in place
 format:
