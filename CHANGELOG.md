@@ -7,12 +7,40 @@ major version such as `@v1`. The format follows
 
 ## [Unreleased]
 
+Version 2 moves the special cases of single repos out of the shared
+workflows. A caller of version 1 keeps working at `@v1`.
+
 ### Removed
 
-- `deploy-ecs.yml`: the `SLACK_WEBHOOK_URL` secret and the Slack message after
-  a deploy. A caller that passes `SLACK_WEBHOOK_URL:` under `secrets:` now
-  fails at startup. Remove that line. Callers with `secrets: inherit` are not
-  affected.
+- `go.yml`, `python.yml`: a repo now spells out a `check` job that runs
+  `just ci`, from the templates `go-service-ci`, `go-library-ci` and
+  `python-service-ci`. Tool versions move into the repo's `justfile`.
+- `terraform.yml`: no repo called it.
+- `image.yml`: the inputs `runner`, `context`, `fetch-depth`, `aws-*`,
+  `ecr-*`, `timeout-minutes` and the secret `GO_PRIVATE_TOKEN`. The runner is
+  the `RUNNER_LABEL` variable, the build context is the repo root, and the
+  checkout always has the full history.
+- `deploy-ecs.yml`: the inputs `pr-label`, `smoke-url`, `environment`,
+  `wait-minutes`, `image-wait-minutes`, `aws-*` and `ecr-*`, and the
+  `SLACK_WEBHOOK_URL` secret with the Slack message after a deploy.
+- `release.yml`: the inputs `changelog`, `goreleaser`, `dockerfile`,
+  `dockerhub-repository`, `aws-*` and `ecr-*`, and the Docker Hub secrets.
+
+### Changed
+
+- `deploy-ecs.yml`: the `deploy` label check applies by itself when a
+  `workflow_run` event starts the deploy. The Deploy button does not check the
+  label. A repo calls the workflow from one `deploy.yml` that has both
+  triggers, and `ci.yml` has no deploy job.
+- `release.yml`: fails unless the tagged commit has a passing `ci-ok` check.
+  The caller grants `checks: read`. The workflow uses goreleaser when the repo
+  has a `.goreleaser.yaml`, and always takes the notes from `CHANGELOG.md`.
+- The workflow templates call `@v2`, and `service-deploy` triggers on
+  `workflow_run`.
+
+### Added
+
+- The template `python-service-ci`.
 
 ## [1.1.0]
 
