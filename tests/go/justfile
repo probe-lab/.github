@@ -1,8 +1,0 @@
-# checks formatting and runs go vet
-lint:
-    test -z "$(gofmt -l .)"
-    go vet ./...
-
-# runs the tests
-test:
-    go test ./...

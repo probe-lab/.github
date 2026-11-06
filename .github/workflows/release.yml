@@ -1,11 +1,14 @@
 # Publishes a release for a version tag such as v1.2.3 or v1.2.3-rc.1: the
-# GitHub release with notes from CHANGELOG.md, optional goreleaser binaries,
-# and optional images. A tag with -rc.N becomes a pre-release. See the README
-# for an example call.
+# GitHub release with notes from the "## [1.2.3]" section of CHANGELOG.md, and
+# an optional ECR image. A tag with -rc.N becomes a pre-release. It fails
+# unless the tagged commit passed ci-ok on the default branch, so a repo does
+# not run its checks again. See the README for an example call.
 #
-# Releases hold write credentials, so every job runs on a GitHub-hosted
-# runner. The caller grants contents: write, and id-token: write when it
-# pushes images to ECR.
+# The repo's .goreleaser.yaml, if there is one, builds and attaches the
+# binaries; a release candidate is a pre-release when it sets
+# release.prerelease to auto. Releases hold write credentials, so every job
+# runs on a GitHub-hosted runner. The caller grants contents: write,
+# checks: read, and id-token: write when it pushes an image to ECR.
 name: Release
 
 on:
@@ -15,54 +18,21 @@ on:
         description: The tag to release, for example v1.2.3.
         type: string
         required: true
-      changelog:
-        description: >-
-          Takes the release notes from the "## [1.2.3]" section of
-          CHANGELOG.md and fails without one. A release candidate uses the
-          section of the version it leads to. Without it, GitHub writes the
-          notes from the merged pull requests.
-        type: boolean
-        default: true
-      goreleaser:
-        description: Builds and attaches the binaries with the repo's .goreleaser.yaml.
-        type: boolean
-        default: false
       ecr-service:
         description: >-
           Pushes an image to ECR as <ecr-service>-1.2.3, and as
-          <ecr-service>-latest for a final release. Empty means no ECR image.
+          <ecr-service>-latest for a final release. Empty means no image.
         type: string
         default: ""
-      dockerhub-repository:
-        description: >-
-          Pushes an image to Docker Hub as <repository>:v1.2.3, and as
-          <repository>:latest for a final release. Empty means no Docker Hub
-          image.
-        type: string
-        default: ""
-      dockerfile:
-        type: string
-        default: Dockerfile
       platforms:
         type: string
         default: linux/amd64,linux/arm64
-      aws-region:
-        type: string
-        default: us-east-1
-      aws-role:
-        type: string
-        default: arn:aws:iam::019120760881:role/prod-use1-github-oidc-role
-      ecr-registry:
-        type: string
-        default: 019120760881.dkr.ecr.us-east-1.amazonaws.com
-      ecr-repository:
-        type: string
-        default: probelab
-    secrets:
-      DOCKERHUB_USERNAME:
-        required: false
-      DOCKERHUB_TOKEN:
-        required: false
+
+env:
+  AWS_REGION: us-east-1
+  AWS_ROLE: arn:aws:iam::019120760881:role/prod-use1-github-oidc-role
+  ECR_REGISTRY: 019120760881.dkr.ecr.us-east-1.amazonaws.com
+  ECR_REPOSITORY: probelab
 
 jobs:
   prepare:
@@ -88,6 +58,23 @@ jobs:
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # The checks ran when the commit was merged. A tag on a commit that
+      # never passed them is a mistake, so the release stops here.
+      - name: Checking that CI passed for the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          sha=$(gh api "repos/$REPO/commits/$TAG" --jq .sha)
+          result=$(gh api "repos/$REPO/commits/$sha/check-runs?check_name=ci-ok" \
+            --jq '[.check_runs[] | select(.conclusion == "success")] | length')
+          if [[ "$result" == "0" ]]; then
+            echo "::error::The commit ${sha::7} has no passing ci-ok check. Merge it through a pull request, wait for CI, and tag again."
+            exit 1
+          fi
+
   github-release:
     name: GitHub release
     needs: prepare
@@ -101,7 +88,6 @@ jobs:
           fetch-depth: 0
 
       - name: Taking the notes from CHANGELOG.md
-        if: inputs.changelog
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
@@ -119,47 +105,46 @@ jobs:
           fi
           printf '%s\n' "$notes" > "$RUNNER_TEMP/notes.md"
 
+      - name: Looking for a goreleaser configuration
+        id: goreleaser
+        run: |
+          if compgen -G ".goreleaser.y*ml" > /dev/null; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Setting up Go
-        if: inputs.goreleaser
+        if: steps.goreleaser.outputs.found == 'true'
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
-      # goreleaser makes a pre-release for a -rc tag when the repo's
-      # .goreleaser.yaml sets release.prerelease to auto.
       - name: Releasing with goreleaser
-        if: inputs.goreleaser
+        if: steps.goreleaser.outputs.found == 'true'
         uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: release --clean ${{ inputs.changelog && format('--release-notes {0}/notes.md', runner.temp) || '' }}
+          args: release --clean --release-notes ${{ runner.temp }}/notes.md
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
       - name: Making the GitHub release
-        if: ${{ !inputs.goreleaser }}
+        if: steps.goreleaser.outputs.found != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
           PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
-          CHANGELOG: ${{ inputs.changelog }}
         run: |
-          args=(--verify-tag --title "$TAG")
+          args=(--verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md")
           if [[ "$PRERELEASE" == "true" ]]; then
             args+=(--prerelease)
           fi
-          if [[ "$CHANGELOG" == "true" ]]; then
-            args+=(--notes-file "$RUNNER_TEMP/notes.md")
-          else
-            args+=(--generate-notes)
-          fi
           gh release create "$TAG" "${args[@]}"
 
-  images:
-    name: Images
+  image:
+    name: ECR image
     needs: prepare
-    if: inputs.ecr-service != '' || inputs.dockerhub-repository != ''
+    if: inputs.ecr-service != ''
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -173,41 +158,25 @@ jobs:
       - name: Computing the image tags
         id: tags
         env:
-          TAG: ${{ inputs.tag }}
           VERSION: ${{ needs.prepare.outputs.version }}
           PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
-          ECR_SERVICE: ${{ inputs.ecr-service }}
-          ECR_IMAGE: ${{ inputs.ecr-registry }}/${{ inputs.ecr-repository }}
-          DOCKERHUB: ${{ inputs.dockerhub-repository }}
+          IMAGE: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}
+          SERVICE: ${{ inputs.ecr-service }}
         run: |
-          tags=()
-          if [[ -n "$ECR_SERVICE" ]]; then
-            tags+=("$ECR_IMAGE:$ECR_SERVICE-$VERSION")
-            [[ "$PRERELEASE" == "true" ]] || tags+=("$ECR_IMAGE:$ECR_SERVICE-latest")
+          tags="$IMAGE:$SERVICE-$VERSION"
+          if [[ "$PRERELEASE" != "true" ]]; then
+            tags="$tags,$IMAGE:$SERVICE-latest"
           fi
-          if [[ -n "$DOCKERHUB" ]]; then
-            tags+=("$DOCKERHUB:$TAG")
-            [[ "$PRERELEASE" == "true" ]] || tags+=("$DOCKERHUB:latest")
-          fi
-          (IFS=,; echo "tags=${tags[*]}") >> "$GITHUB_OUTPUT"
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
 
       - name: Configuring AWS credentials
-        if: inputs.ecr-service != ''
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          aws-region: ${{ inputs.aws-region }}
-          role-to-assume: ${{ inputs.aws-role }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_ROLE }}
 
       - name: Logging in to Amazon ECR
-        if: inputs.ecr-service != ''
         uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Logging in to Docker Hub
-        if: inputs.dockerhub-repository != ''
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Setting up QEMU
         uses: docker/setup-qemu-action@v4
@@ -215,11 +184,10 @@ jobs:
       - name: Setting up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Building and pushing the images
+      - name: Building and pushing the image
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ${{ inputs.dockerfile }}
           platforms: ${{ inputs.platforms }}
           push: true
           tags: ${{ steps.tags.outputs.tags }}
