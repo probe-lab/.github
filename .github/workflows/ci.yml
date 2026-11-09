@@ -23,11 +23,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checking out the code
+      - name: Checking out the Code
         uses: actions/checkout@v7
 
       - name: Setting up just
         uses: extractions/setup-just@v4
 
-      - name: Linting the workflows and templates
+      - name: Linting the Workflows and Templates
         run: just lint

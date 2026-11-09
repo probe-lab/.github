@@ -71,13 +71,13 @@ jobs:
       # A pull request builds its head commit, not the merge commit, so the
       # tag names a commit that exists in the repo. The full history has the
       # tags that go build reads the version from.
-      - name: Checking out the code
+      - name: Checking out the Code
         uses: actions/checkout@v7
         with:
           ref: ${{ inputs.commit || github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
-      - name: Computing the image tags
+      - name: Computing the Image Tags
         id: tags
         env:
           SERVICE: ${{ inputs.service }}
@@ -98,7 +98,7 @@ jobs:
             echo "tags=$tags"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Configuring AWS credentials
+      - name: Configuring AWS Credentials
         if: env.PUSH == 'true'
         uses: aws-actions/configure-aws-credentials@v6
         with:
@@ -109,7 +109,7 @@ jobs:
         if: env.PUSH == 'true'
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Checking if the image exists
+      - name: Checking if the Image exists
         id: exists
         if: env.PUSH == 'true' && github.event_name != 'pull_request'
         env:
@@ -131,7 +131,7 @@ jobs:
         with:
           driver: ${{ runner.environment == 'self-hosted' && 'docker' || 'docker-container' }}
 
-      - name: Building the image
+      - name: Building the Image
         if: steps.exists.outputs.exists != 'true'
         uses: docker/build-push-action@v7
         with:
