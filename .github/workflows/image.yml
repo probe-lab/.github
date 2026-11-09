@@ -109,17 +109,25 @@ jobs:
         if: env.PUSH == 'true'
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Checking if the Image exists
+      - name: Checking if ${{ steps.tags.outputs.tag }} exists
         id: exists
-        if: env.PUSH == 'true' && github.event_name != 'pull_request'
         env:
           REPOSITORY: ${{ env.ECR_REPOSITORY }}
           TAG: ${{ steps.tags.outputs.tag }}
+          EVENT: ${{ github.event_name }}
         run: |
-          if aws ecr describe-images --repository-name "$REPOSITORY" --image-ids imageTag="$TAG" > /dev/null 2>&1; then
-            echo "$TAG exists. Nothing to build."
-            echo "exists=true" >> "$GITHUB_OUTPUT"
+          if ! error=$(aws ecr describe-images --repository-name "$REPOSITORY" --image-ids imageTag="$TAG" 2>&1 > /dev/null); then
+            if [[ "$error" == *ImageNotFoundException* ]]; then
+              echo "$TAG is not in ECR. Building it."
+              exit 0
+            fi
+
+            echo "::error::Could not check for $TAG: $error"
+            exit 1
           fi
+
+          echo "$TAG exists. Nothing to build."
+          echo "exists=true" >> "$GITHUB_OUTPUT"
 
       # A self-hosted runner builds in its own Docker, which keeps the build
       # cache between jobs. A GitHub-hosted runner keeps docker-container,
