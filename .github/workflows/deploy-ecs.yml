@@ -68,44 +68,12 @@ env:
   SERVICE_WAIT_MINUTES: 15
 
 jobs:
-  # A separate job, so that a merge without the label creates no deployment
-  # in GitHub. The button skips it.
-  label:
-    name: Labels
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      deploy: ${{ steps.label.outputs.deploy }}
-    steps:
-      - name: Checking PR Labels
-        id: label
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
-          LABEL: deploy
-        run: |
-          set -euo pipefail
-          prs=$(gh api "repos/$REPO/commits/$SHA/pulls" | jq -r --arg label "$LABEL" \
-            '[.[] | select(.merged_at != null and any(.labels[]; .name == $label)) | "#\(.number)"] | join(", ")')
-          if [[ -n "$prs" ]]; then
-            echo "Pull request $prs has the label $LABEL. Deploying ${SHA::7}."
-            echo "deploy=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No merged pull request of ${SHA::7} has the label $LABEL. Nothing deploys."
-            echo "deploy=false" >> "$GITHUB_OUTPUT"
-          fi
-
   deploy:
     name: Deploy
-    needs: label
-    # Runs when there is no label to check, or when the pull request has it.
-    if: ${{ !cancelled() && (needs.label.result == 'skipped' || needs.label.outputs.deploy == 'true') }}
-    # Deploys hold prod credentials, so they never run on a self-hosted runner.
-    runs-on: ubuntu-latest
+    # A deploy waits up to 15 minutes for the service, so it runs on the
+    # self-hosted runner when the repo has one. The steps need gh, jq and curl.
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     timeout-minutes: 45
-    environment: production
     # One rollout at a time for each service. A newer deploy waits, and an
     # older deploy that still waits is dropped.
     concurrency:
@@ -116,7 +84,34 @@ jobs:
       image: ${{ steps.image.outputs.image }}
       task-definition-arn: ${{ steps.service.outputs.task-definition-arn || steps.register.outputs.task-definition-arn }}
     steps:
+      # Sets the output deploy to true when the deploy goes on, and leaves it
+      # empty otherwise, so the later steps skip. The button needs no label. A
+      # merge needs the label on its pull request.
+      - name: Checking PR Labels
+        id: label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          LABEL: deploy
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" != "push" ]]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          prs=$(gh api "repos/$REPO/commits/$SHA/pulls" | jq -r --arg label "$LABEL" '[.[] | select(.merged_at != null and any(.labels[]; .name == $label)) | "#\(.number)"] | join(", ")')
+          if [[ -n "$prs" ]]; then
+            echo "Pull request $prs has the label $LABEL. Deploying ${SHA::7}."
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No merged pull request of ${SHA::7} has the label $LABEL. Nothing deploys."
+          fi
+
       - name: Finding Commit
+        if: steps.label.outputs.deploy
         id: commit
         env:
           GH_TOKEN: ${{ github.token }}
@@ -135,7 +130,8 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "Deploying $sha"
 
-      - name: Configuring AWS credentials
+      - name: Configuring AWS Credentials
+        if: steps.label.outputs.deploy
         uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-region: ${{ env.AWS_REGION }}
@@ -145,6 +141,7 @@ jobs:
       # person who presses the button on a commit without an image gets the
       # error at once.
       - name: Finding Image
+        if: steps.label.outputs.deploy
         id: image
         env:
           REPOSITORY: ${{ env.ECR_REPOSITORY }}
@@ -165,7 +162,8 @@ jobs:
 
       # Takes the newest task definition, so a change that Terraform made to
       # it, such as a new environment variable, goes out with this deploy.
-      - name: Downloading the task definition
+      - name: Downloading the Task Definition
+        if: steps.label.outputs.deploy
         id: current
         env:
           FAMILY: ${{ inputs.task-definition }}
@@ -181,7 +179,8 @@ jobs:
           echo "image=$image" >> "$GITHUB_OUTPUT"
           jq 'del(.taskDefinitionArn, .requiresAttributes, .compatibilities, .revision, .status, .registeredAt, .registeredBy)' current.json > task-definition.json
 
-      - name: Setting the new image
+      - name: Setting the new Image
+        if: steps.label.outputs.deploy
         id: render
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
@@ -190,9 +189,9 @@ jobs:
           image: ${{ steps.image.outputs.image }}
           environment-variables: ${{ inputs.container-env }}
 
-      - name: Deploying the service
+      - name: Deploying the Service
         id: service
-        if: ${{ !inputs.task-definition-only }}
+        if: steps.label.outputs.deploy && !inputs.task-definition-only
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.render.outputs.task-definition }}
@@ -203,9 +202,9 @@ jobs:
           propagate-tags: SERVICE
           enable-ecs-managed-tags: true
 
-      - name: Registering the task definition
+      - name: Registering the Task Definition
         id: register
-        if: inputs.task-definition-only
+        if: steps.label.outputs.deploy && inputs.task-definition-only
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.render.outputs.task-definition }}

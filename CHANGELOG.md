@@ -28,6 +28,11 @@ workflows. A caller of version 1 keeps working at `@v1`.
 
 ### Changed
 
+- `deploy-ecs.yml`: runs on the `RUNNER_LABEL` runner when the repo has one,
+  not always on `ubuntu-latest`. The runner needs `gh` and `jq`.
+- `deploy-ecs.yml`: one job. The label check is its first step, and a merge
+  without the label skips the later steps. The job has no `environment`,
+  which the free plan does not offer for private repos.
 - `deploy-ecs.yml`: the `deploy` label check applies by itself when the CI run
   of a merge (a `push` event) calls it. The Deploy button does not check the
   label. The workflow no longer waits for an image: the `deploy` job of

@@ -102,8 +102,9 @@ The template is `workflow-templates/service-deploy.yml`. Inputs of
 `task-definition`, `container`, `container-env` (environment variables for
 the container, one `KEY=VALUE` per line) and `task-definition-only` (registers
 a task definition without a service deploy). The workflow takes no secrets.
-Create the label `deploy` (Issues, Labels, New label) and the environment
-`production` (Settings, Environments) in each service repo.
+Create the label `deploy` (Issues, Labels, New label) in each service repo.
+The workflow uses no GitHub environment, because the free plan has none for
+private repos.
 
 A repo with several services calls `deploy-ecs.yml` once for each, with a
 `strategy.matrix` or with separate jobs. A step that only one repo needs, such
@@ -132,8 +133,10 @@ names, and on `ubuntu-latest` when the variable is empty. `RUNNER_LABEL` is
 value and runs on GitHub-hosted runners, because public repos must not use the
 self-hosted runners.
 
-Deploys and releases always run on GitHub-hosted runners, because
-they hold strong credentials.
+Releases always run on GitHub-hosted runners, because they hold write
+credentials. Deploys run on the runner of `RUNNER_LABEL` too, because a deploy
+waits for the service and would burn hosted minutes. The runner needs `gh` and
+`jq`.
 
 To move every check to GitHub-hosted runners, for example when the
 self-hosted machine is down, delete the org variable `RUNNER_LABEL`.
@@ -144,8 +147,7 @@ self-hosted machine is down, delete the org variable `RUNNER_LABEL`.
    && git push origin v2.0.0 v2`.
 2. Create the org variable `RUNNER_LABEL` with the value `probelab-ci` and
    the repository access "Private repositories".
-3. In each service repo, create the environment `production` and the label
-   `deploy`.
+3. In each service repo, create the label `deploy`.
 4. Narrow the AWS trust in probelab-infra (`tf/oidc.tf`).
 5. After the first green run of a repo, add `Checking the code` to the
    required checks of the org ruleset. In a service repo, also add the image
