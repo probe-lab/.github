@@ -92,8 +92,6 @@ jobs:
         if: inputs.push
         uses: aws-actions/amazon-ecr-login@v2
 
-      # A commit is built once. A rerun of a merged commit skips the build.
-      # A pull request always builds, so its pr tag follows the latest push.
       - name: Checking if the image exists
         id: exists
         if: inputs.push && github.event_name != 'pull_request'

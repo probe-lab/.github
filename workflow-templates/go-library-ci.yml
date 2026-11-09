@@ -41,14 +41,3 @@ jobs:
 
       - name: Running the checks
         run: just ci
-
-  # The one required check. It passes when every job passed or was skipped.
-  ci-ok:
-    name: ci-ok
-    if: always()
-    needs: [check]
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
-    steps:
-      - name: Checking that every job passed
-        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
-        run: exit 1

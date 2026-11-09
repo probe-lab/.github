@@ -1,6 +1,6 @@
 {
   "name": "ProbeLab Go service CI",
-  "description": "Runs just ci on every pull request, and builds the image of every merge. Nothing deploys.",
+  "description": "Runs just ci on every pull request, and builds the image of every merge, and deploys a merge whose pull request has the label deploy.",
   "iconName": "octicon checklist",
   "categories": ["Go"],
   "filePatterns": ["^go\\.mod$", "^Dockerfile"]

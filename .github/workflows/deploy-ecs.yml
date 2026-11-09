@@ -1,13 +1,13 @@
 # Deploys the image of one commit to one ECS service. Two events start it in
-# the caller: a person pressing the Deploy button (workflow_dispatch), and a
-# finished CI run on the default branch (workflow_run). The button deploys
-# without a check. A CI run deploys only when the merged pull request of the
-# commit has the label deploy. See the README for an example call.
+# the caller: a person pressing the Deploy button (workflow_dispatch), and the
+# CI run of a merge (push), where the deploy is the last job, after the image
+# job. The button deploys without a check. A merge deploys only when its
+# pull request has the label deploy. See the README for an example call.
 #
 # It deploys only a commit on the default branch whose image
-# <service>-sha<commit> is in ECR. It never builds an image: while CI still
-# builds it, the deploy waits up to 10 minutes. The caller grants
-# contents: read, id-token: write and pull-requests: read.
+# <service>-sha<commit> is in ECR. It never builds an image and never waits
+# for one. The caller grants contents: read, id-token: write and
+# pull-requests: read.
 name: Deploy to ECS
 
 on:
@@ -65,9 +65,6 @@ env:
   AWS_ROLE: arn:aws:iam::019120760881:role/prod-use1-github-oidc-role
   ECR_REGISTRY: 019120760881.dkr.ecr.us-east-1.amazonaws.com
   ECR_REPOSITORY: probelab
-  # CI pushes the image after the tests pass. A deploy started right after a
-  # merge waits that long for it.
-  IMAGE_WAIT_MINUTES: 10
   SERVICE_WAIT_MINUTES: 15
 
 jobs:
@@ -75,7 +72,7 @@ jobs:
   # in GitHub. The button skips it.
   label:
     name: Check the pull request label
-    if: github.event_name == 'workflow_run'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -86,7 +83,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
+          SHA: ${{ github.sha }}
           LABEL: deploy
         run: |
           set -euo pipefail
@@ -125,7 +122,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
-          COMMIT: ${{ github.event.workflow_run.head_sha || inputs.commit }}
+          COMMIT: ${{ inputs.commit || (github.event_name == 'push' && github.sha) || '' }}
         run: |
           set -euo pipefail
           sha=$(gh api "repos/$REPO/commits/${COMMIT:-$DEFAULT_BRANCH}" --jq .sha)
@@ -144,8 +141,9 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: ${{ env.AWS_ROLE }}
 
-      # CI pushes the image after the tests pass. A deploy started right
-      # after a merge waits for it.
+      # The image job of the same CI run pushed it before this job started. A
+      # person who presses the button on a commit without an image gets the
+      # error at once.
       - name: Finding the image
         id: image
         env:
@@ -153,22 +151,16 @@ jobs:
           IMAGE: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}
           SERVICE: ${{ inputs.service }}
           SHA: ${{ steps.commit.outputs.sha }}
-          WAIT_MINUTES: ${{ env.IMAGE_WAIT_MINUTES }}
         run: |
           tag="$SERVICE-sha${SHA::7}"
-          deadline=$((SECONDS + WAIT_MINUTES * 60))
-          until aws ecr describe-images --repository-name "$REPOSITORY" --image-ids imageTag="$tag" > /dev/null 2> ecr-error.txt; do
-            if ! grep -q ImageNotFoundException ecr-error.txt; then
+          if ! aws ecr describe-images --repository-name "$REPOSITORY" --image-ids imageTag="$tag" > /dev/null 2> ecr-error.txt; then
+            if grep -q ImageNotFoundException ecr-error.txt; then
+              echo "::error::There is no image $tag. Check that the CI run of this commit on the default branch passed."
+            else
               echo "::error::$(cat ecr-error.txt)"
-              exit 1
             fi
-            if (( SECONDS >= deadline )); then
-              echo "::error::There is no image $tag after $WAIT_MINUTES minutes. Check that the CI run of this commit on the default branch passed."
-              exit 1
-            fi
-            echo "$tag is not in ECR yet. CI may still be running. Checking again in 20 s."
-            sleep 20
-          done
+            exit 1
+          fi
           echo "image=$IMAGE:$tag" >> "$GITHUB_OUTPUT"
 
       # Takes the newest task definition, so a change that Terraform made to
