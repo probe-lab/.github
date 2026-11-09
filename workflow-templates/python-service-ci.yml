@@ -4,7 +4,7 @@ name: CI
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
   push:
     branches: [$default-branch]
 
@@ -21,7 +21,11 @@ jobs:
   # Extras that only this repo needs, such as a service container, go here.
   check:
     name: Checking the code
-    if: github.event.pull_request.draft != true
+    # Runs unless the pull request is a draft, or the run comes from a label
+    # other than push-image.
+    if: >-
+      github.event.pull_request.draft != true &&
+      (github.event.action != 'labeled' || github.event.label.name == 'push-image')
     runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
@@ -49,13 +53,14 @@ jobs:
   image:
     name: Building the image
     needs: check
+    # Runs when no check failed, and not for a draft pull request.
+    if: github.event.pull_request.draft != true && !failure() && !cancelled()
     permissions:
       contents: read
       id-token: write
     uses: probe-lab/.github/.github/workflows/image.yml@v2
     with:
       service: ${{ github.event.repository.name }}
-      push: ${{ github.event_name == 'push' }}
 
   # Deploys the merge after its image exists, when its pull request has the
   # label "deploy". Delete this job in a repo that never deploys, and

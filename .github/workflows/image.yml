@@ -1,11 +1,14 @@
-# Builds a Docker image. With push, it pushes the image to ECR as
-# <service>-sha<commit>; a pull request also gets <service>-pr<number>.
-# Without push, it only checks that the image builds. See the README for an
-# example call.
+# Builds a Docker image and pushes it to ECR as <service>-sha<commit>; a pull
+# request also gets <service>-pr<number>. It pushes the image of a merge, of a
+# manual run, and of a pull request with the label push-image. Any other pull
+# request only builds the image, to check that it builds. See the README for
+# an example call.
 #
-# The image goes to the ProbeLab ECR repository, and the build runs on the
-# RUNNER_LABEL runner when the repo has that variable. The caller grants
-# id-token: write when push is true.
+# A pull request with other labels does not run it again: the caller lists
+# `labeled` in its pull_request types, and this workflow skips a labeled
+# event of any other label. The image goes to the ProbeLab ECR repository, and
+# the build runs on the RUNNER_LABEL runner when the repo has that variable.
+# The caller grants id-token: write.
 name: Image
 
 on:
@@ -16,7 +19,8 @@ on:
         type: string
         required: true
       push:
-        description: Pushes the image to ECR. Without it, the image is only built.
+        description: >-
+          Pushes whatever the event is. Without it, the rules above decide.
         type: boolean
         default: false
       dockerfile:
@@ -30,6 +34,12 @@ on:
       platforms:
         type: string
         default: linux/amd64
+      commit:
+        description: >-
+          The commit to build, as a SHA, a branch or a tag. Empty means the
+          commit of the event, or the head commit of a pull request.
+        type: string
+        default: ""
     outputs:
       image:
         description: The image with its commit tag, for example 0191.../probelab:atlas-sha1a2b3c4.
@@ -47,8 +57,13 @@ env:
 jobs:
   image:
     name: Image
+    # The label push-image on a pull request is the only other label that
+    # starts a run.
+    if: github.event.action != 'labeled' || github.event.label.name == 'push-image'
     runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     timeout-minutes: 45
+    env:
+      PUSH: ${{ inputs.push || github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'push-image') }}
     outputs:
       image: ${{ steps.tags.outputs.image }}
       tag: ${{ steps.tags.outputs.tag }}
@@ -59,7 +74,7 @@ jobs:
       - name: Checking out the code
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.commit || github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Computing the image tags
@@ -67,9 +82,11 @@ jobs:
         env:
           SERVICE: ${{ inputs.service }}
           IMAGE: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}
-          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           PR: ${{ github.event.pull_request.number }}
         run: |
+          # The checked-out commit, so a branch name or a short SHA in the
+          # commit input gives the same tag as the full SHA.
+          SHA=$(git rev-parse HEAD)
           tag="$SERVICE-sha${SHA::7}"
           tags="$IMAGE:$tag"
           if [[ -n "$PR" ]]; then
@@ -82,19 +99,19 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Configuring AWS credentials
-        if: inputs.push
+        if: env.PUSH == 'true'
         uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: ${{ env.AWS_ROLE }}
 
       - name: Logging in to Amazon ECR
-        if: inputs.push
+        if: env.PUSH == 'true'
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Checking if the image exists
         id: exists
-        if: inputs.push && github.event_name != 'pull_request'
+        if: env.PUSH == 'true' && github.event_name != 'pull_request'
         env:
           REPOSITORY: ${{ env.ECR_REPOSITORY }}
           TAG: ${{ steps.tags.outputs.tag }}
@@ -122,5 +139,5 @@ jobs:
           file: ${{ inputs.dockerfile }}
           platforms: ${{ inputs.platforms }}
           build-args: ${{ inputs.build-args }}
-          push: ${{ inputs.push }}
+          push: ${{ env.PUSH == 'true' }}
           tags: ${{ steps.tags.outputs.tags }}

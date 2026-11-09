@@ -43,6 +43,12 @@ workflows. A caller of version 1 keeps working at `@v1`.
 
 ### Added
 
+- `image.yml`: pushes the image of a pull request that has the label
+  `push-image`. The `push` input defaults to false and forces the push; without it
+  the workflow pushes a merge, a manual run, or a pull request with that label. The
+  service templates list `labeled` in their pull request types.
+- `image.yml`: the `commit` input, to build a commit other than the one of
+  the event. The Deploy button of a repo uses it.
 - The template `python-service-ci`.
 
 ## [1.1.0]
