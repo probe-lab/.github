@@ -43,10 +43,10 @@ on:
     outputs:
       image:
         description: The image with its commit tag, for example 0191.../probelab:atlas-sha1a2b3c4.
-        value: ${{ jobs.image.outputs.image }}
+        value: ${{ jobs.build.outputs.image }}
       tag:
         description: The commit tag, for example atlas-sha1a2b3c4.
-        value: ${{ jobs.image.outputs.tag }}
+        value: ${{ jobs.build.outputs.tag }}
 
 env:
   AWS_REGION: us-east-1
@@ -55,8 +55,8 @@ env:
   ECR_REPOSITORY: probelab
 
 jobs:
-  image:
-    name: Image
+  build:
+    name: Build
     # The label push-image on a pull request is the only other label that
     # starts a run.
     if: github.event.action != 'labeled' || github.event.label.name == 'push-image'
