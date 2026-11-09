@@ -115,7 +115,7 @@ repo's `deploy.yml` before or after the call.
 
 Write the changes under `## [1.2.3]` in `CHANGELOG.md`, merge them, wait for
 CI, then push the tag `v1.2.3`. The template is `workflow-templates/release.yml`.
-The release fails unless the tagged commit has a passing `Checking the code`, so the repo
+The release fails unless the checks of the tagged commit passed, so the repo
 does not run its checks again. The caller grants `contents: write`,
 `checks: read` and, for an image, `id-token: write`.
 
@@ -138,6 +138,25 @@ credentials. Deploys run on the runner of `RUNNER_LABEL` too, because a deploy
 waits for the service and would burn hosted minutes. The runner needs `gh` and
 `jq`.
 
+### Runner tools
+
+A GitHub-hosted runner has these tools. The self-hosted runner `probelab-ci`
+has only what someone installed on it. Setup actions install Go, uv, just and
+the Docker Buildx plugin themselves, so they are not in the list. A workflow
+does not check its tools: a missing one fails the step that uses it. Install
+the tools of this table when you set up a runner.
+
+| Tool | Needed by | Why |
+| --- | --- | --- |
+| `git` | every workflow | The checkout. |
+| `docker` | `image.yml`, repo checks that build images | Builds the image and logs in to ECR. |
+| `aws` (CLI v2) | `image.yml`, `deploy-ecs.yml` | Looks for the image in ECR, and reads the task definition. |
+| `gh` | `deploy-ecs.yml` | Finds the merged pull request, and the commit on the default branch. |
+| `jq` | `deploy-ecs.yml` | Reads the answers of `gh` and `aws`. |
+
+When a workflow starts to use a new tool, add it to this table and install it
+on the runner.
+
 To move every check to GitHub-hosted runners, for example when the
 self-hosted machine is down, delete the org variable `RUNNER_LABEL`.
 
@@ -149,9 +168,8 @@ self-hosted machine is down, delete the org variable `RUNNER_LABEL`.
    the repository access "Private repositories".
 3. In each service repo, create the label `deploy`.
 4. Narrow the AWS trust in probelab-infra (`tf/oidc.tf`).
-5. After the first green run of a repo, add `Checking the code` to the
-   required checks of the org ruleset. In a service repo, also add the image
-   check. Copy its name from a finished run. Remove `ci-ok` from the ruleset.
+5. Optional: when the plan allows it, add the check jobs of a repo to the
+   required checks of its ruleset. No workflow here depends on a check name.
 
 ## Development
 

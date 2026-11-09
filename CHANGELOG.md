@@ -38,16 +38,18 @@ workflows. A caller of version 1 keeps working at `@v1`.
   label. The workflow no longer waits for an image: the `deploy` job of
   `ci.yml` runs after the `image` job of the same run, on the merge commit. A
   repo has one `deploy.yml` with `workflow_dispatch` and `workflow_call`.
-- `release.yml`: fails unless the tagged commit has a passing
-  `Checking the code` check. The caller grants `checks: read`. The workflow uses goreleaser when the repo
+- `release.yml`: fails unless the tagged commit has a passing check and no
+  failed one, whatever the job is named. The caller grants `checks: read`. The workflow uses goreleaser when the repo
   has a `.goreleaser.yaml`, and always takes the notes from `CHANGELOG.md`.
 - The workflow templates call `@v2`. The service templates have a `deploy`
   job, and `service-deploy` is the button and the target of that job.
-- The CI of this repo and the templates have no `ci-ok` job. The required
-  check is `Checking the code`, and for a service the image job.
+- The CI of this repo and the templates have no `ci-ok` job, and nothing
+  depends on the name of a check job.
 
 ### Added
 
+- `image.yml` and `deploy-ecs.yml`: a first step on a self-hosted runner that
+  fails with the names of missing tools. The README lists the runner tools.
 - `image.yml`: pushes the image of a pull request that has the label
   `push-image`. The `push` input defaults to false and forces the push; without it
   the workflow pushes a merge, a manual run, or a pull request with that label. The
