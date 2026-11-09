@@ -5,8 +5,8 @@
 #   - A person starts it from the Actions tab, or with
 #     `gh workflow run deploy.yml -f commit=<commit>`. It deploys without a
 #     check. To roll back, deploy an older commit.
-#   - ci.yml calls it after the image job of a merge. It deploys only when the
-#     merged pull request has the label "deploy".
+#   - ci.yml calls it after the image job of a merge, only when the merged
+#     pull request has the label "deploy". ci.yml decides, not this file.
 # A repo without this file never deploys.
 name: Deploy
 
@@ -22,7 +22,6 @@ on:
 permissions:
   contents: read
   id-token: write
-  pull-requests: read
 
 jobs:
   deploy:

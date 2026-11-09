@@ -58,6 +58,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      pull-requests: read
     uses: probe-lab/.github/.github/workflows/image.yml@v2
     with:
       service: ${{ github.event.repository.name }}
@@ -66,12 +67,13 @@ jobs:
   # label "deploy". Delete this job in a repo that never deploys, and
   # deploy.yml with it.
   deploy:
-    name: Deploying
+    name: Deploy
     needs: image
-    if: github.event_name == 'push'
+    # image.yml sets the output deploy when a merge had the label deploy. Any
+    # other run, such as a pull request, skips this job.
+    if: needs.image.outputs.deploy
     permissions:
       contents: read
       id-token: write
-      pull-requests: read
     uses: ./.github/workflows/deploy.yml
     secrets: inherit

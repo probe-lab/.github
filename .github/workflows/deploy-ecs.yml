@@ -1,13 +1,11 @@
-# Deploys the image of one commit to one ECS service. Two events start it in
-# the caller: a person pressing the Deploy button (workflow_dispatch), and the
-# CI run of a merge (push), where the deploy is the last job, after the image
-# job. The button deploys without a check. A merge deploys only when its
-# pull request has the label deploy. See the README for an example call.
+# Deploys the image of one commit to one ECS service. It always deploys: the
+# caller decides when to call it. A merge deploys when image.yml reports the
+# label deploy on its pull request (the output deploy), and a person deploys
+# with the Deploy button. See the README for an example call.
 #
 # It deploys only a commit on the default branch whose image
 # <service>-sha<commit> is in ECR. It never builds an image and never waits
-# for one. The caller grants contents: read, id-token: write and
-# pull-requests: read.
+# for one. The caller grants contents: read and id-token: write.
 name: Deploy to ECS
 
 on:
@@ -71,7 +69,7 @@ jobs:
   deploy:
     name: Deploy
     # A deploy waits up to 15 minutes for the service, so it runs on the
-    # self-hosted runner when the repo has one. The steps need gh, jq and curl.
+    # self-hosted runner when the repo has one. The steps need aws, gh and jq.
     runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     timeout-minutes: 45
     # One rollout at a time for each service. A newer deploy waits, and an
@@ -84,34 +82,7 @@ jobs:
       image: ${{ steps.image.outputs.image }}
       task-definition-arn: ${{ steps.service.outputs.task-definition-arn || steps.register.outputs.task-definition-arn }}
     steps:
-      # Sets the output deploy to true when the deploy goes on, and leaves it
-      # empty otherwise, so the later steps skip. The button needs no label. A
-      # merge needs the label on its pull request.
-      - name: Checking PR Labels
-        id: label
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
-          LABEL: deploy
-          EVENT: ${{ github.event_name }}
-        run: |
-          set -euo pipefail
-          if [[ "$EVENT" != "push" ]]; then
-            echo "deploy=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          prs=$(gh api "repos/$REPO/commits/$SHA/pulls" | jq -r --arg label "$LABEL" '[.[] | select(.merged_at != null and any(.labels[]; .name == $label)) | "#\(.number)"] | join(", ")')
-          if [[ -n "$prs" ]]; then
-            echo "Pull request $prs has the label $LABEL. Deploying ${SHA::7}."
-            echo "deploy=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No merged pull request of ${SHA::7} has the label $LABEL. Nothing deploys."
-          fi
-
       - name: Finding Commit
-        if: steps.label.outputs.deploy
         id: commit
         env:
           GH_TOKEN: ${{ github.token }}
@@ -131,7 +102,6 @@ jobs:
           echo "Deploying $sha"
 
       - name: Configuring AWS Credentials
-        if: steps.label.outputs.deploy
         uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-region: ${{ env.AWS_REGION }}
@@ -141,7 +111,6 @@ jobs:
       # person who presses the button on a commit without an image gets the
       # error at once.
       - name: Finding Image
-        if: steps.label.outputs.deploy
         id: image
         env:
           REPOSITORY: ${{ env.ECR_REPOSITORY }}
@@ -163,7 +132,6 @@ jobs:
       # Takes the newest task definition, so a change that Terraform made to
       # it, such as a new environment variable, goes out with this deploy.
       - name: Downloading the Task Definition
-        if: steps.label.outputs.deploy
         id: current
         env:
           FAMILY: ${{ inputs.task-definition }}
@@ -180,7 +148,6 @@ jobs:
           jq 'del(.taskDefinitionArn, .requiresAttributes, .compatibilities, .revision, .status, .registeredAt, .registeredBy)' current.json > task-definition.json
 
       - name: Setting the new Image
-        if: steps.label.outputs.deploy
         id: render
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
@@ -191,7 +158,7 @@ jobs:
 
       - name: Deploying the Service
         id: service
-        if: steps.label.outputs.deploy && !inputs.task-definition-only
+        if: ${{ !inputs.task-definition-only }}
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.render.outputs.task-definition }}
@@ -204,7 +171,7 @@ jobs:
 
       - name: Registering the Task Definition
         id: register
-        if: steps.label.outputs.deploy && inputs.task-definition-only
+        if: inputs.task-definition-only
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.render.outputs.task-definition }}

@@ -8,7 +8,11 @@
 # `labeled` in its pull_request types, and this workflow skips a labeled
 # event of any other label. The image goes to the ProbeLab ECR repository, and
 # the build runs on the RUNNER_LABEL runner when the repo has that variable.
-# The caller grants id-token: write.
+#
+# On a push, it also looks up the merged pull request of the commit and sets
+# the output deploy to true when that pull request has the label deploy, so
+# the caller can skip its deploy job without a job of its own for this. The
+# caller grants id-token: write and pull-requests: read.
 name: Image
 
 on:
@@ -47,6 +51,11 @@ on:
       tag:
         description: The commit tag, for example atlas-sha1a2b3c4.
         value: ${{ jobs.build.outputs.tag }}
+      deploy:
+        description: >-
+          true when a push merged a pull request with the label deploy. Empty
+          otherwise.
+        value: ${{ jobs.build.outputs.deploy }}
 
 env:
   AWS_REGION: us-east-1
@@ -67,7 +76,28 @@ jobs:
     outputs:
       image: ${{ steps.tags.outputs.image }}
       tag: ${{ steps.tags.outputs.tag }}
+      deploy: ${{ steps.label.outputs.deploy }}
     steps:
+      # Leaves the output empty, unless the commit is a merge of a pull request
+      # with the label deploy.
+      - name: Checking PR Labels
+        id: label
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          LABEL: deploy
+        run: |
+          set -euo pipefail
+          prs=$(gh api "repos/$REPO/commits/$SHA/pulls" | jq -r --arg label "$LABEL" '[.[] | select(.merged_at != null and any(.labels[]; .name == $label)) | "#\(.number)"] | join(", ")')
+          if [[ -n "$prs" ]]; then
+            echo "Pull request $prs has the label $LABEL."
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No merged pull request of ${SHA::7} has the label $LABEL."
+          fi
+
       # A pull request builds its head commit, not the merge commit, so the
       # tag names a commit that exists in the repo. The full history has the
       # tags that go build reads the version from.
