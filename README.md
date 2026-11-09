@@ -33,7 +33,7 @@ Each shared workflow lists all of its inputs at the top of its file.
 | File | Content |
 | --- | --- |
 | `ci.yml` | The `check` job, and the `image` job for a service. |
-| `deploy.yml` | Only in a service that deploys. The Deploy button, and the deploy after a merge. |
+| `deploy.yml` | Only in a service that deploys. The Deploy button (a repo can fold it into `ci.yml` as `workflow_dispatch` inputs, as boomo does), and the target of the `deploy` job. |
 | `release.yml` | Only in a repo with releases. |
 | `.github/dependabot.yml` | Keeps the action versions of the repo current. |
 
@@ -83,19 +83,26 @@ and the tag `<name>service`.
 
 ### The Deploy workflow
 
-`deploy.yml` starts in 2 ways:
+`deploy-ecs.yml` always deploys; the caller decides when to call it. The
+`deploy` job of `ci.yml` has this rule:
 
-| Start | Check |
+| Run | Deploys? |
 | --- | --- |
-| A person, from the Actions tab or `gh workflow run deploy.yml -f commit=<commit>` | None. An empty commit means the newest on the default branch. |
-| The `deploy` job of `ci.yml`, after the `image` job of a merge | The merged pull request must have the label `deploy`. |
+| A pull request | Never. |
+| A merge | When its pull request has the label `deploy`. `image.yml` looks it up and sets its output `deploy`. |
+| A person, from the Actions tab | When the flag `deploy` is set. The label does not matter. |
 
-Without the label, the deploy is skipped and GitHub shows no deployment. A
-repo with no `deploy.yml` never deploys. The workflow stops if the commit is
-not on the default branch, or if the image of the commit is not in ECR. It
-never waits for an image: after a merge, the `deploy` job starts only when the
-`image` job of the same run has pushed it. To roll back, deploy an older commit
-by hand.
+Otherwise the `deploy` job is skipped, and the run shows it as skipped. No job
+of its own looks up the label: `image.yml` does it in a step, because a job
+`if` cannot see a pull request label on a `push` event. The workflow stops if
+the commit is not on the default branch, or if the image of the commit is not
+in ECR. It never waits for an image: after a merge, the `deploy` job starts
+only when the `image` job of the same run has pushed it. To roll back, deploy
+an older commit by hand.
+
+A caller that skips checks (a `skip-checks` flag) must keep `deploy` running
+after a skipped `check` job: `!cancelled()` and `needs.image.result ==
+'success'` in the `if`. See boomo.
 
 The template is `workflow-templates/service-deploy.yml`. Inputs of
 `deploy-ecs.yml`: `service`, `commit`, `cluster`, `ecs-service`,
@@ -151,8 +158,8 @@ the tools of this table when you set up a runner.
 | `git` | every workflow | The checkout. |
 | `docker` | `image.yml`, repo checks that build images | Builds the image and logs in to ECR. |
 | `aws` (CLI v2) | `image.yml`, `deploy-ecs.yml` | Looks for the image in ECR, and reads the task definition. |
-| `gh` | `deploy-ecs.yml` | Finds the merged pull request, and the commit on the default branch. |
-| `jq` | `deploy-ecs.yml` | Reads the answers of `gh` and `aws`. |
+| `gh` | `image.yml`, `deploy-ecs.yml` | Finds the merged pull request of a push, and the commit on the default branch. |
+| `jq` | `image.yml`, `deploy-ecs.yml` | Reads the answers of `gh` and `aws`. |
 
 When a workflow starts to use a new tool, add it to this table and install it
 on the runner.

@@ -29,15 +29,17 @@ workflows. A caller of version 1 keeps working at `@v1`.
 ### Changed
 
 - `deploy-ecs.yml`: runs on the `RUNNER_LABEL` runner when the repo has one,
-  not always on `ubuntu-latest`. The runner needs `gh` and `jq`.
-- `deploy-ecs.yml`: one job. The label check is its first step, and a merge
-  without the label skips the later steps. The job has no `environment`,
-  which the free plan does not offer for private repos.
-- `deploy-ecs.yml`: the `deploy` label check applies by itself when the CI run
-  of a merge (a `push` event) calls it. The Deploy button does not check the
-  label. The workflow no longer waits for an image: the `deploy` job of
-  `ci.yml` runs after the `image` job of the same run, on the merge commit. A
-  repo has one `deploy.yml` with `workflow_dispatch` and `workflow_call`.
+  not always on `ubuntu-latest`. The runner needs `aws`, `gh` and `jq`.
+- `deploy-ecs.yml`: one job, with no `environment`, which the free plan does
+  not offer for private repos.
+- `deploy-ecs.yml`: always deploys; it no longer checks the label. The workflow
+  no longer waits for an image: the `deploy` job of `ci.yml` runs after the
+  `image` job of the same run, on the merge commit.
+- `image.yml`: on a push, a step looks up the merged pull request and sets the
+  output `deploy` when it has the label `deploy`. The caller's `deploy` job
+  uses it in its `if`, so an unlabeled merge shows the deploy as skipped
+  without a job of its own for the lookup. The caller grants
+  `pull-requests: read` to the image job, not to the deploy job.
 - `release.yml`: fails unless the tagged commit has a passing check and no
   failed one, whatever the job is named. The caller grants `checks: read`. The workflow uses goreleaser when the repo
   has a `.goreleaser.yaml`, and always takes the notes from `CHANGELOG.md`.
