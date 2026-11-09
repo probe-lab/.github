@@ -1,8 +1,8 @@
 # Publishes a release for a version tag such as v1.2.3 or v1.2.3-rc.1: the
 # GitHub release with notes from the "## [1.2.3]" section of CHANGELOG.md, and
 # an optional ECR image. A tag with -rc.N becomes a pre-release. It fails
-# unless the tagged commit passed the check "Checking the code" on the default
-# branch, so a repo does not run its checks again. See the README for an example call.
+# unless the checks of the tagged commit passed, so a repo does not run its
+# checks again. See the README for an example call.
 #
 # The repo's .goreleaser.yaml, if there is one, builds and attaches the
 # binaries; a release candidate is a pre-release when it sets
@@ -58,8 +58,9 @@ jobs:
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # The checks ran when the commit was merged. A tag on a commit that
-      # never passed them is a mistake, so the release stops here.
+      # The checks ran when the commit was merged. A tag on a commit with a
+      # failed check, or with no check at all, is a mistake, so the release
+      # stops here. Runs that are still going, such as this one, do not count.
       - name: Checking that CI passed for the tagged commit
         env:
           GH_TOKEN: ${{ github.token }}
@@ -68,10 +69,14 @@ jobs:
         run: |
           set -euo pipefail
           sha=$(gh api "repos/$REPO/commits/$TAG" --jq .sha)
-          result=$(gh api "repos/$REPO/commits/$sha/check-runs?check_name=Checking%20the%20code" \
-            --jq '[.check_runs[] | select(.conclusion == "success")] | length')
-          if [[ "$result" == "0" ]]; then
-            echo "::error::The commit ${sha::7} has no passing 'Checking the code' check. Merge it through a pull request, wait for CI, and tag again."
+          # The jq program has $ variables, which the shell must not expand.
+          # shellcheck disable=SC2016
+          counts=$(gh api "repos/$REPO/commits/$sha/check-runs?per_page=100" --jq '
+            [.check_runs[] | select(.status == "completed")] as $runs
+            | "\([$runs[] | select(.conclusion == "success")] | length) \([$runs[] | select(.conclusion | IN("success", "skipped", "neutral") | not)] | length)"')
+          read -r passed failed <<< "$counts"
+          if [[ "$failed" != "0" || "$passed" == "0" ]]; then
+            echo "::error::The commit ${sha::7} has $passed passing and $failed failed checks. Merge it through a pull request, wait for CI to pass, and tag again."
             exit 1
           fi
 
