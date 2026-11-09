@@ -25,6 +25,7 @@ Org-level repo of `probe-lab`. It holds the shared reusable workflows that Probe
 - Do not move or retag `v2` as part of a normal change. The README, "Change this repo", has the release steps.
 - Write changes under a new `## [X.Y.Z]` section in `CHANGELOG.md`.
 - Shared workflows hold production credentials or a naming contract only. A need of one repo goes in that repo's `ci.yml` or `justfile`, not in an input here.
+- A workflow that starts to use a new command-line tool adds it to "Runner tools" in the README.
 - A change to a template goes with the matching change in the README examples.
 - Change `PULL_REQUEST_TEMPLATE.md` together with the template in the `probelab-git` skill.
 
