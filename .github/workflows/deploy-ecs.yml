@@ -71,14 +71,14 @@ jobs:
   # A separate job, so that a merge without the label creates no deployment
   # in GitHub. The button skips it.
   label:
-    name: Check the pull request label
+    name: Labels
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       deploy: ${{ steps.label.outputs.deploy }}
     steps:
-      - name: Checking the pull request
+      - name: Checking PR Labels
         id: label
         env:
           GH_TOKEN: ${{ github.token }}
@@ -98,7 +98,7 @@ jobs:
           fi
 
   deploy:
-    name: Deploy ${{ inputs.ecs-service || inputs.task-definition }}
+    name: Deploy
     needs: label
     # Runs when there is no label to check, or when the pull request has it.
     if: ${{ !cancelled() && (needs.label.result == 'skipped' || needs.label.outputs.deploy == 'true') }}
@@ -116,7 +116,7 @@ jobs:
       image: ${{ steps.image.outputs.image }}
       task-definition-arn: ${{ steps.service.outputs.task-definition-arn || steps.register.outputs.task-definition-arn }}
     steps:
-      - name: Finding the commit
+      - name: Finding Commit
         id: commit
         env:
           GH_TOKEN: ${{ github.token }}
@@ -144,7 +144,7 @@ jobs:
       # The image job of the same CI run pushed it before this job started. A
       # person who presses the button on a commit without an image gets the
       # error at once.
-      - name: Finding the image
+      - name: Finding Image
         id: image
         env:
           REPOSITORY: ${{ env.ECR_REPOSITORY }}
