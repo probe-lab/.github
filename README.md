@@ -32,7 +32,7 @@ Each shared workflow lists all of its inputs at the top of its file.
 
 | File | Content |
 | --- | --- |
-| `ci.yml` | The `check` job, the `image` job for a service, and `ci-ok`. |
+| `ci.yml` | The `check` job, and the `image` job for a service. |
 | `deploy.yml` | Only in a service that deploys. The Deploy button, and the deploy after a merge. |
 | `release.yml` | Only in a repo with releases. |
 | `.github/dependabot.yml` | Keeps the action versions of the repo current. |
@@ -88,12 +88,14 @@ and the tag `<name>service`.
 | Start | Check |
 | --- | --- |
 | A person, from the Actions tab or `gh workflow run deploy.yml -f commit=<commit>` | None. An empty commit means the newest on the default branch. |
-| A finished CI run on the default branch | The merged pull request of the commit must have the label `deploy`. |
+| The `deploy` job of `ci.yml`, after the `image` job of a merge | The merged pull request must have the label `deploy`. |
 
 Without the label, the deploy is skipped and GitHub shows no deployment. A
 repo with no `deploy.yml` never deploys. The workflow stops if the commit is
-not on the default branch. If the image of the commit is not in ECR yet, it
-waits up to 10 minutes. To roll back, deploy an older commit by hand.
+not on the default branch, or if the image of the commit is not in ECR. It
+never waits for an image: after a merge, the `deploy` job starts only when the
+`image` job of the same run has pushed it. To roll back, deploy an older commit
+by hand.
 
 The template is `workflow-templates/service-deploy.yml`. Inputs of
 `deploy-ecs.yml`: `service`, `commit`, `cluster`, `ecs-service`,
@@ -112,7 +114,7 @@ repo's `deploy.yml` before or after the call.
 
 Write the changes under `## [1.2.3]` in `CHANGELOG.md`, merge them, wait for
 CI, then push the tag `v1.2.3`. The template is `workflow-templates/release.yml`.
-The release fails unless the tagged commit has a passing `ci-ok`, so the repo
+The release fails unless the tagged commit has a passing `Checking the code`, so the repo
 does not run its checks again. The caller grants `contents: write`,
 `checks: read` and, for an image, `id-token: write`.
 
@@ -145,8 +147,9 @@ self-hosted machine is down, delete the org variable `RUNNER_LABEL`.
 3. In each service repo, create the environment `production` and the label
    `deploy`.
 4. Narrow the AWS trust in probelab-infra (`tf/oidc.tf`).
-5. After the first green run of a repo, add `ci-ok` to the required checks of
-   the org ruleset.
+5. After the first green run of a repo, add `Checking the code` to the
+   required checks of the org ruleset. In a service repo, also add the image
+   check. Copy its name from a finished run. Remove `ci-ok` from the ruleset.
 
 ## Development
 

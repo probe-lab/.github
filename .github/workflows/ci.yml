@@ -42,13 +42,3 @@ jobs:
     with:
       service: fixture
       dockerfile: tests/image/Dockerfile
-
-  ci-ok:
-    name: ci-ok
-    if: always()
-    needs: [actionlint, image]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checking that every job passed
-        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
-        run: exit 1

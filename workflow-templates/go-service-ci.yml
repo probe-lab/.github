@@ -1,5 +1,5 @@
 # CI for a Go service: runs `just ci` on every pull request, and builds the
-# image of every merge. Nothing deploys here: see deploy.yml.
+# image of every merge. A merge deploys when its pull request has the label "deploy": see deploy.yml.
 name: CI
 
 on:
@@ -53,13 +53,16 @@ jobs:
       service: ${{ github.event.repository.name }}
       push: ${{ github.event_name == 'push' }}
 
-  # The one required check. It passes when every job passed or was skipped.
-  ci-ok:
-    name: ci-ok
-    if: always()
-    needs: [check, image]
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
-    steps:
-      - name: Checking that every job passed
-        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
-        run: exit 1
+  # Deploys the merge after its image exists, when its pull request has the
+  # label "deploy". Delete this job in a repo that never deploys, and
+  # deploy.yml with it.
+  deploy:
+    name: Deploying
+    needs: image
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: read
+    uses: ./.github/workflows/deploy.yml
+    secrets: inherit

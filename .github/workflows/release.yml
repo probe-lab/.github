@@ -1,8 +1,8 @@
 # Publishes a release for a version tag such as v1.2.3 or v1.2.3-rc.1: the
 # GitHub release with notes from the "## [1.2.3]" section of CHANGELOG.md, and
 # an optional ECR image. A tag with -rc.N becomes a pre-release. It fails
-# unless the tagged commit passed ci-ok on the default branch, so a repo does
-# not run its checks again. See the README for an example call.
+# unless the tagged commit passed the check "Checking the code" on the default
+# branch, so a repo does not run its checks again. See the README for an example call.
 #
 # The repo's .goreleaser.yaml, if there is one, builds and attaches the
 # binaries; a release candidate is a pre-release when it sets
@@ -68,10 +68,10 @@ jobs:
         run: |
           set -euo pipefail
           sha=$(gh api "repos/$REPO/commits/$TAG" --jq .sha)
-          result=$(gh api "repos/$REPO/commits/$sha/check-runs?check_name=ci-ok" \
+          result=$(gh api "repos/$REPO/commits/$sha/check-runs?check_name=Checking%20the%20code" \
             --jq '[.check_runs[] | select(.conclusion == "success")] | length')
           if [[ "$result" == "0" ]]; then
-            echo "::error::The commit ${sha::7} has no passing ci-ok check. Merge it through a pull request, wait for CI, and tag again."
+            echo "::error::The commit ${sha::7} has no passing 'Checking the code' check. Merge it through a pull request, wait for CI, and tag again."
             exit 1
           fi
 

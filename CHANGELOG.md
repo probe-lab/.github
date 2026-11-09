@@ -28,15 +28,18 @@ workflows. A caller of version 1 keeps working at `@v1`.
 
 ### Changed
 
-- `deploy-ecs.yml`: the `deploy` label check applies by itself when a
-  `workflow_run` event starts the deploy. The Deploy button does not check the
-  label. A repo calls the workflow from one `deploy.yml` that has both
-  triggers, and `ci.yml` has no deploy job.
-- `release.yml`: fails unless the tagged commit has a passing `ci-ok` check.
-  The caller grants `checks: read`. The workflow uses goreleaser when the repo
+- `deploy-ecs.yml`: the `deploy` label check applies by itself when the CI run
+  of a merge (a `push` event) calls it. The Deploy button does not check the
+  label. The workflow no longer waits for an image: the `deploy` job of
+  `ci.yml` runs after the `image` job of the same run, on the merge commit. A
+  repo has one `deploy.yml` with `workflow_dispatch` and `workflow_call`.
+- `release.yml`: fails unless the tagged commit has a passing
+  `Checking the code` check. The caller grants `checks: read`. The workflow uses goreleaser when the repo
   has a `.goreleaser.yaml`, and always takes the notes from `CHANGELOG.md`.
-- The workflow templates call `@v2`, and `service-deploy` triggers on
-  `workflow_run`.
+- The workflow templates call `@v2`. The service templates have a `deploy`
+  job, and `service-deploy` is the button and the target of that job.
+- The CI of this repo and the templates have no `ci-ok` job. The required
+  check is `Checking the code`, and for a service the image job.
 
 ### Added
 
