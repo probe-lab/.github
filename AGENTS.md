@@ -16,7 +16,7 @@ Org-level repo of `probe-lab`. It holds the shared reusable workflows that Probe
 
 ## Commands
 
-- `just lint` runs `scripts/lint.sh`: actionlint on the workflows and on the templates (needs `actionlint` on the PATH); `just ci` runs the checks. CI runs `just lint` too.
+- `just lint` runs `scripts/lint.sh`: actionlint on the workflows and on the templates (downloads `actionlint` into `~/.cache/actionlint` if it is not on the PATH); `just ci` runs the checks. CI runs `just lint` too.
 - CI also builds an image with `image.yml`. `deploy-ecs.yml` and `release.yml` need AWS, so only actionlint checks them.
 
 ## Conventions
