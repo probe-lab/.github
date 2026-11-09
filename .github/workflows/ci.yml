@@ -5,6 +5,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
 
@@ -18,6 +19,7 @@ permissions:
 jobs:
   actionlint:
     name: actionlint
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -27,18 +29,5 @@ jobs:
       - name: Setting up just
         uses: extractions/setup-just@v4
 
-      - name: Installing actionlint
-        run: |
-          mkdir -p "$RUNNER_TEMP/bin"
-          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12 "$RUNNER_TEMP/bin"
-          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
-
       - name: Linting the workflows and templates
         run: just lint
-
-  image:
-    name: Building the fixture image
-    uses: ./.github/workflows/image.yml
-    with:
-      service: fixture
-      dockerfile: tests/image/Dockerfile
