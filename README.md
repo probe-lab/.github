@@ -154,7 +154,7 @@ self-hosted machine is down, delete the org variable `RUNNER_LABEL`.
 ## Development
 
 `just` lists the recipes. `just lint` runs actionlint on the workflows and the
-templates (`scripts/lint.sh`) and needs `actionlint` on the PATH. `just ci`
+templates (`scripts/lint.sh`) and downloads `actionlint` if it is not on the PATH. `just ci`
 runs the checks that can run locally. CI also builds a small image with
 `image.yml`.
 
