@@ -1,6 +1,5 @@
-# Checks this repo: lints every workflow and template, and builds a small
-# image with the shared image workflow. The deploy and release workflows need
-# AWS, so only actionlint checks them.
+# Checks this repo: lints every workflow and template with actionlint. The
+# shared workflows need AWS, so CI does not run them.
 name: CI
 
 on:
@@ -17,10 +16,10 @@ permissions:
   contents: read
 
 jobs:
-  actionlint:
-    name: actionlint
+  check:
+    name: Lint, Build & Test
     if: github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - name: Checking out the Code
@@ -31,3 +30,9 @@ jobs:
 
       - name: Linting the Workflows and Templates
         run: just lint
+
+      - name: Building the Code
+        run: just build
+
+      - name: Running the Tests
+        run: just test

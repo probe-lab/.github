@@ -10,7 +10,7 @@ build:
 
 # Run the tests
 test:
-    @echo "nothing to test here: CI builds the image in tests/image/"
+    @echo "nothing to test"
 
 # Check the code without changing files
 lint:
