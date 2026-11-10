@@ -25,6 +25,8 @@ callers move from `@v1` to `@main`. A caller of version 1 keeps working at
   `wait-minutes`, `image-wait-minutes`, `aws-*` and `ecr-*`, and the
   `SLACK_WEBHOOK_URL` secret with the Slack message after a deploy.
 - The template `service-deploy`: the Deploy button is part of `ci.yml`.
+- `workflow-templates/`: the templates are in the `probelab-github-actions`
+  skill of probe-lab/ai-commons, so there is one copy.
 - `release.yml`: the inputs `changelog`, `goreleaser`, `dockerfile`,
   `dockerhub-repository`, `aws-*` and `ecr-*`, and the Docker Hub secrets.
 

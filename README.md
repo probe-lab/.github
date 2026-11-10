@@ -1,8 +1,9 @@
 # ProbeLab's shared GitHub files
 
-This repo holds the GitHub Actions workflows that ProbeLab repos share, the
-templates for new workflows, and the default files for repos that have none
-of their own.
+This repo holds the GitHub Actions workflows that ProbeLab repos share, and
+the default files for repos that have none of their own. The templates for a
+repo's workflows are in the `probelab-github-actions` skill of
+[probe-lab/ai-commons](https://github.com/probe-lab/ai-commons).
 
 In short: a pull request runs `just lint`, `just build` and `just test`, a
 merge builds one image, and a merge deploys that image when its pull request
@@ -21,7 +22,6 @@ ClickHouse container for the tests, belong in that repo's own `ci.yml`.
 | `.github/workflows/image.yml` | Builds a Docker image, and pushes it to ECR as `<service>-sha<commit>` when asked. |
 | `.github/workflows/deploy-ecs.yml` | Deploys the image of one commit to one ECS service. |
 | `.github/workflows/release.yml` | Publishes a version tag: the GitHub release with the notes from `CHANGELOG.md`, goreleaser binaries when the repo has a `.goreleaser.yaml`, and an optional ECR image. |
-| `workflow-templates/` | Starter files that every org repo offers under Actions, New workflow. |
 | `PULL_REQUEST_TEMPLATE.md`, `SECURITY.md` | Defaults for every org repo that has no file of its own. |
 | `profile/README.md` | The public page of the org. |
 | `.github/workflows/ci.yml`, `tests/` | The CI of this repo. |
@@ -36,9 +36,8 @@ Each shared workflow lists all of its inputs at the top of its file.
 | `release.yml` | Only in a repo with releases. |
 | `.github/dependabot.yml` | Keeps the action versions of the repo current. |
 
-Start from the templates: in the repo, open Actions, then New workflow, and
-pick a ProbeLab template. The templates are `go-library-ci`,
-`go-service-ci`, `python-service-ci` and `release`.
+Start from the templates in the `probelab-github-actions` skill of ai-commons:
+`go-library-ci`, `go-service-ci`, `python-service-ci` and `release`.
 
 ### The `check` job
 
@@ -124,7 +123,8 @@ repo's `ci.yml` before or after the `deploy` job.
 ### A release
 
 Write the changes under `## [1.2.3]` in `CHANGELOG.md`, merge them, wait for
-CI, then push the tag `v1.2.3`. The template is `workflow-templates/release.yml`.
+CI, then push the tag `v1.2.3`. The template is `release.yml` in the
+`probelab-github-actions` skill.
 The release fails unless the checks of the tagged commit passed, so the repo
 does not run its checks again. The caller grants `contents: write`,
 `checks: read` and, for an image, `id-token: write`.
@@ -181,13 +181,13 @@ self-hosted machine is down, delete the org variable `RUNNER_LABEL`.
 
 ## Development
 
-`just` lists the recipes. `just lint` runs actionlint on the workflows and the
-templates (`scripts/lint.sh`) and downloads `actionlint` if it is not on the PATH. `just ci`
+`just` lists the recipes. `just lint` runs actionlint on the workflows
+(`scripts/lint.sh`) and downloads `actionlint` if it is not on the PATH. `just ci`
 runs the same checks as CI.
 
 ## Change this repo
 
-1. Open a pull request. Its CI lints every workflow and template.
+1. Open a pull request. Its CI lints every workflow.
 2. The shared workflows need AWS or a tag, so CI only lints them. Before the
    merge, try a change in one repo with `@<your branch>` instead of `@main`.
 3. Write the changes in `CHANGELOG.md`, under the date of the merge.

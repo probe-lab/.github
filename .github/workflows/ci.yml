@@ -1,4 +1,4 @@
-# Checks this repo: lints every workflow and template with actionlint. The
+# Checks this repo: lints every workflow with actionlint. The
 # shared workflows need AWS, so CI does not run them.
 name: CI
 
@@ -28,7 +28,7 @@ jobs:
       - name: Setting up just
         uses: extractions/setup-just@v4
 
-      - name: Linting the Workflows and Templates
+      - name: Linting the Workflows
         run: just lint
 
       - name: Building the Code

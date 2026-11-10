@@ -1,7 +1,0 @@
-{
-  "name": "ProbeLab Python service CI",
-  "description": "Lints, builds and tests every pull request, builds the image of every merge, deploys a merge whose pull request has the label deploy, and has a Deploy button.",
-  "iconName": "octicon checklist",
-  "categories": ["Python"],
-  "filePatterns": ["^pyproject\\.toml$", "^Dockerfile"]
-}
