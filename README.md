@@ -147,6 +147,7 @@ the tools of this table when you set up a runner.
 | `aws` (CLI v2) | `image.yml`, `deploy-ecs.yml` | Looks for the image in ECR, and reads the task definition. |
 | `gh` | `image.yml`, `deploy-ecs.yml` | Finds the merged pull request of a push, and the commit on the default branch. |
 | `jq` | `image.yml`, `deploy-ecs.yml` | Reads the answers of `gh` and `aws`. |
+| `libpq5` | atlas checks | The PostgreSQL client library that `psycopg` loads in the tests. |
 
 When a workflow starts to use a new tool, add it to this table and install it
 on the runner.
