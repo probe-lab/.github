@@ -21,7 +21,6 @@ ClickHouse container for the tests, belong in that repo's own `ci.yml`.
 | --- | --- |
 | `.github/workflows/image.yml` | Builds a Docker image, and pushes it to ECR as `<service>-sha<commit>` when asked. |
 | `.github/workflows/deploy-ecs.yml` | Deploys the image of one commit to one ECS service. |
-| `.github/workflows/release.yml` | Publishes a version tag: the GitHub release with the notes from `CHANGELOG.md`, goreleaser binaries when the repo has a `.goreleaser.yaml`, and an optional ECR image. |
 | `PULL_REQUEST_TEMPLATE.md`, `SECURITY.md` | Defaults for every org repo that has no file of its own. |
 | `profile/README.md` | The public page of the org. |
 | `.github/workflows/ci.yml`, `tests/` | The CI of this repo. |
@@ -33,11 +32,10 @@ Each shared workflow lists all of its inputs at the top of its file.
 | File | Content |
 | --- | --- |
 | `ci.yml` | The `check` job. A service adds the `image` job. A service that deploys adds the `deploy` job and the Deploy button (`workflow_dispatch`). |
-| `release.yml` | Only in a repo with releases. |
 | `.github/dependabot.yml` | Keeps the action versions of the repo current. |
 
 Start from the templates in the `probelab-github-actions` skill of ai-commons:
-`go-library-ci`, `go-service-ci`, `python-service-ci` and `release`.
+`go-library-ci`, `go-service-ci` and `python-service-ci`.
 
 ### The `check` job
 
@@ -52,7 +50,7 @@ A repo adds what only it needs to its own job:
 - A service container: nebula starts ClickHouse and priv-hermes starts
   LocalStack, and the tests read the mapped port from the environment.
 - `lfs: true` on the checkout: atlas keeps database backups in Git LFS.
-- A step that only this repo has, such as the release build of nebula.
+- A step that only this repo has.
 
 When `just test` starts its own services on a laptop, the repo adds a
 `test-plain` recipe that expects the services, and the test step runs
@@ -120,21 +118,6 @@ A repo with several services calls `deploy-ecs.yml` once for each, with a
 as the atlas upload of static files and the Cloudflare purge, is a job in that
 repo's `ci.yml` before or after the `deploy` job.
 
-### A release
-
-Write the changes under `## [1.2.3]` in `CHANGELOG.md`, merge them, wait for
-CI, then push the tag `v1.2.3`. The template is `release.yml` in the
-`probelab-github-actions` skill.
-The release fails unless the checks of the tagged commit passed, so the repo
-does not run its checks again. The caller grants `contents: write`,
-`checks: read` and, for an image, `id-token: write`.
-
-| Repo | Inputs |
-| --- | --- |
-| go-commons | none: the notes only |
-| nebula | `ecr-service: nebula` |
-| priv-hermes | `ecr-service: hermes`, `platforms: linux/amd64` |
-
 ## Runners
 
 Checks and image builds run on the runner that the org variable `RUNNER_LABEL`
@@ -143,8 +126,7 @@ names, and on `ubuntu-latest` when the variable is empty. `RUNNER_LABEL` is
 value and runs on GitHub-hosted runners, because public repos must not use the
 self-hosted runners.
 
-Releases always run on GitHub-hosted runners, because they hold write
-credentials. Deploys run on the runner of `RUNNER_LABEL` too, because a deploy
+Deploys run on the runner of `RUNNER_LABEL` too, because a deploy
 waits for the service and would burn hosted minutes. The runner needs `gh` and
 `jq`.
 
@@ -188,7 +170,7 @@ runs the same checks as CI.
 ## Change this repo
 
 1. Open a pull request. Its CI lints every workflow.
-2. The shared workflows need AWS or a tag, so CI only lints them. Before the
+2. The shared workflows need AWS, so CI only lints them. Before the
    merge, try a change in one repo with `@<your branch>` instead of `@main`.
 3. Write the changes in `CHANGELOG.md`, under the date of the merge.
 4. Callers use `@main`, so a merge reaches every caller at once. A change that

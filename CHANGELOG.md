@@ -27,8 +27,8 @@ callers move from `@v1` to `@main`. A caller of version 1 keeps working at
 - The template `service-deploy`: the Deploy button is part of `ci.yml`.
 - `workflow-templates/`: the templates are in the `probelab-github-actions`
   skill of probe-lab/ai-commons, so there is one copy.
-- `release.yml`: the inputs `changelog`, `goreleaser`, `dockerfile`,
-  `dockerhub-repository`, `aws-*` and `ecr-*`, and the Docker Hub secrets.
+- `release.yml`: releases come back, built from scratch, once CI works
+  across all repos. A caller of `@v1` keeps its release workflow.
 
 ### Changed
 
@@ -44,9 +44,6 @@ callers move from `@v1` to `@main`. A caller of version 1 keeps working at
   uses it in its `if`, so an unlabeled merge shows the deploy as skipped
   without a job of its own for the lookup. The caller grants
   `pull-requests: read` to the image job, not to the deploy job.
-- `release.yml`: fails unless the tagged commit has a passing check and no
-  failed one, whatever the job is named. The caller grants `checks: read`. The workflow uses goreleaser when the repo
-  has a `.goreleaser.yaml`, and always takes the notes from `CHANGELOG.md`.
 - The workflow templates call `@main`. In the service templates, the `deploy`
   job calls `deploy-ecs.yml` directly, and the Deploy button is a
   `workflow_dispatch` trigger of `ci.yml` with the inputs `commit`,

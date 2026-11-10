@@ -6,7 +6,7 @@ Org-level repo of `probe-lab`. It holds the shared reusable workflows that Probe
 
 ## Layout
 
-- `.github/workflows/` — shared workflows (`image.yml`, `deploy-ecs.yml`, `release.yml`) and this repo's own `ci.yml`
+- `.github/workflows/` — shared workflows (`image.yml`, `deploy-ecs.yml`) and this repo's own `ci.yml`
 - `scripts/` — `lint.sh`, which `just lint` and CI run
 - `tests/image/` — a small Dockerfile; CI no longer builds it
 - `profile/` — public org page
