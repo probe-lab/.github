@@ -19,7 +19,7 @@ jobs:
       contents: write
       checks: read
       id-token: write
-    uses: probe-lab/.github/.github/workflows/release.yml@v2
+    uses: probe-lab/.github/.github/workflows/release.yml@main
     with:
       tag: ${{ github.ref_name }}
       # ecr-service: SERVICE

@@ -1,0 +1,7 @@
+{
+  "name": "ProbeLab Go library CI",
+  "description": "Lints, builds and tests every pull request and every merge of a Go library or tool.",
+  "iconName": "octicon checklist",
+  "categories": ["Go"],
+  "filePatterns": ["^go\\.mod$"]
+}

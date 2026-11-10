@@ -1,20 +1,21 @@
 # Changelog
 
-All notable changes to the shared workflows are listed here. Repos pin a
-major version such as `@v1`. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
-[Semantic Versioning](https://semver.org/).
+All notable changes to the shared workflows are listed here. Repos call the
+workflows at `@main`, so a change reaches every caller when it merges.
+Old callers keep `@v1`. Changes are listed under the date of the merge, in the
+format of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## 2026-11-10
 
-Version 2 moves the special cases of single repos out of the shared
-workflows. A caller of version 1 keeps working at `@v1`.
+The special cases of single repos move out of the shared workflows, and
+callers move from `@v1` to `@main`. A caller of version 1 keeps working at
+`@v1`.
 
 ### Removed
 
 - `go.yml`, `python.yml`: a repo now spells out a `check` job that runs
-  `just ci`, from the templates `go-service-ci`, `go-library-ci` and
-  `python-service-ci`. Tool versions move into the repo's `justfile`.
+  `just lint`, `just build` and `just test`, from the templates
+  `go-service-ci`, `go-library-ci` and `python-service-ci`. Tool versions move into the repo's `justfile`.
 - `terraform.yml`: no repo called it.
 - `image.yml`: the inputs `runner`, `context`, `fetch-depth`, `aws-*`,
   `ecr-*`, `timeout-minutes` and the secret `GO_PRIVATE_TOKEN`. The runner is
@@ -23,6 +24,7 @@ workflows. A caller of version 1 keeps working at `@v1`.
 - `deploy-ecs.yml`: the inputs `pr-label`, `smoke-url`, `environment`,
   `wait-minutes`, `image-wait-minutes`, `aws-*` and `ecr-*`, and the
   `SLACK_WEBHOOK_URL` secret with the Slack message after a deploy.
+- The template `service-deploy`: the Deploy button is part of `ci.yml`.
 - `release.yml`: the inputs `changelog`, `goreleaser`, `dockerfile`,
   `dockerhub-repository`, `aws-*` and `ecr-*`, and the Docker Hub secrets.
 
@@ -43,15 +45,16 @@ workflows. A caller of version 1 keeps working at `@v1`.
 - `release.yml`: fails unless the tagged commit has a passing check and no
   failed one, whatever the job is named. The caller grants `checks: read`. The workflow uses goreleaser when the repo
   has a `.goreleaser.yaml`, and always takes the notes from `CHANGELOG.md`.
-- The workflow templates call `@v2`. The service templates have a `deploy`
-  job, and `service-deploy` is the button and the target of that job.
+- The workflow templates call `@main`. In the service templates, the `deploy`
+  job calls `deploy-ecs.yml` directly, and the Deploy button is a
+  `workflow_dispatch` trigger of `ci.yml` with the inputs `commit`,
+  `skip-checks` and `deploy`.
 - The CI of this repo and the templates have no `ci-ok` job, and nothing
   depends on the name of a check job.
 
 ### Added
 
-- `image.yml` and `deploy-ecs.yml`: a first step on a self-hosted runner that
-  fails with the names of missing tools. The README lists the runner tools.
+- The README lists the tools that the self-hosted runner needs.
 - `image.yml`: pushes the image of a pull request that has the label
   `push-image`. The `push` input defaults to false and forces the push; without it
   the workflow pushes a merge, a manual run, or a pull request with that label. The

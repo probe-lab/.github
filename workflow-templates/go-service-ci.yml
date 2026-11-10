@@ -1,5 +1,10 @@
-# CI for a Go service: runs `just ci` on every pull request, and builds the
-# image of every merge. A merge deploys when its pull request has the label "deploy": see deploy.yml.
+# CI for a Go service: checks every pull request, builds the image of every
+# merge (and of a pull request with the label "push-image"), and deploys a merge
+# whose pull request has the label "deploy". A person starts this workflow by
+# hand, or runs `just deploy <commit>`, to check and build any commit, and with
+# the flag "deploy" to deploy it without the label. "skip-checks" leaves out
+# lint, build and tests. A service that never deploys deletes the deploy job
+# and the deploy input.
 name: CI
 
 on:
@@ -7,6 +12,20 @@ on:
     types: [opened, synchronize, reopened, ready_for_review, labeled]
   push:
     branches: [$default-branch]
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: The commit to deploy. Empty means the newest on the default branch.
+        type: string
+        required: false
+      skip-checks:
+        description: Skip the Lint, Build & Test Steps
+        type: boolean
+        default: false
+      deploy:
+        description: Deploy to ECS.
+        type: boolean
+        default: false
 
 # A new push to a pull request cancels its running checks.
 concurrency:
@@ -17,23 +36,21 @@ permissions:
   contents: read
 
 jobs:
-  # Runs the repo's own checks, the same ones a person runs with `just ci`.
-  # Extras that only this repo needs, such as a service container, go here.
   check:
-    name: Checking the code
-    # Runs unless the pull request is a draft, or the run comes from a label
-    # other than push-image.
+    name: Lint, Build & Test
+    # Runs unless the pull request is a draft, the button ticked skip-checks, or
+    # the run comes from a label other than push-image.
     if: >-
-      github.event.pull_request.draft != true &&
+      github.event.pull_request.draft != true && !inputs.skip-checks &&
       (github.event.action != 'labeled' || github.event.label.name == 'push-image')
     runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
-      - name: Checking out the code
+      - name: Checking out the Code
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit || github.sha }}
 
-      # A self-hosted runner keeps the Go caches on its disk, so only
-      # GitHub-hosted runners use the GitHub cache.
       - name: Setting up Go
         uses: actions/setup-go@v7
         with:
@@ -43,33 +60,49 @@ jobs:
       - name: Setting up just
         uses: extractions/setup-just@v4
 
-      - name: Running the checks
-        run: just ci
+      - name: Linting the Code
+        run: just lint
+
+      - name: Building the Binary
+        run: just build
+
+      - name: Running the Tests
+        run: just test
 
   image:
-    name: Building the image
+    name: Container Image
     needs: check
-    # Runs when no check failed, and not for a draft pull request.
+    # Doesn't run for a draft PR. Runs when no check failed, also when the checks were skipped.
     if: github.event.pull_request.draft != true && !failure() && !cancelled()
     permissions:
       contents: read
       id-token: write
       pull-requests: read
-    uses: probe-lab/.github/.github/workflows/image.yml@v2
+    uses: probe-lab/.github/.github/workflows/image.yml@main
     with:
       service: ${{ github.event.repository.name }}
+      commit: ${{ inputs.commit }}
 
-  # Deploys the merge after its image exists, when its pull request has the
-  # label "deploy". Delete this job in a repo that never deploys, and
-  # deploy.yml with it.
   deploy:
-    name: Deploy
+    name: Deployment
     needs: image
-    # image.yml sets the output deploy when a merge had the label deploy. Any
-    # other run, such as a pull request, skips this job.
-    if: needs.image.outputs.deploy
+    # A pull request never deploys: the deploy flag is empty and image.yml
+    # reports no label. A merge deploys when its pull request had the label
+    # "deploy", and the button deploys with the deploy flag. !cancelled() keeps
+    # a skipped check job upstream from skipping this job too, and the image
+    # result keeps a failed image from being deployed.
+    if: >-
+      !cancelled() && needs.image.result == 'success' &&
+      (inputs.deploy || needs.image.outputs.deploy)
     permissions:
       contents: read
       id-token: write
-    uses: ./.github/workflows/deploy.yml
-    secrets: inherit
+    uses: probe-lab/.github/.github/workflows/deploy-ecs.yml@main
+    with:
+      service: ${{ github.event.repository.name }}
+      commit: ${{ inputs.commit || github.sha }}
+      # Replace SERVICE with the names in probelab-infra.
+      cluster: prod-use1-cmi-ecs-cluster
+      ecs-service: prod-use1-cmi-SERVICE
+      task-definition: prod-use1-cmi-SERVICE-task
+      container: prod-use1-cmi-SERVICE

@@ -1,5 +1,5 @@
-# CI for a Go library or tool that has no image: runs `just ci` on every pull
-# request and every merge.
+# CI for a Go library or tool that has no image: checks every pull request and
+# every merge.
 name: CI
 
 on:
@@ -17,19 +17,15 @@ permissions:
   contents: read
 
 jobs:
-  # Runs the repo's own checks, the same ones a person runs with `just ci`.
-  # Extras that only this repo needs, such as a service container, go here.
   check:
-    name: Checking the code
+    name: Lint, Build & Test
     if: github.event.pull_request.draft != true
     runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
-      - name: Checking out the code
+      - name: Checking out the Code
         uses: actions/checkout@v7
 
-      # A self-hosted runner keeps the Go caches on its disk, so only
-      # GitHub-hosted runners use the GitHub cache.
       - name: Setting up Go
         uses: actions/setup-go@v7
         with:
@@ -39,5 +35,11 @@ jobs:
       - name: Setting up just
         uses: extractions/setup-just@v4
 
-      - name: Running the checks
-        run: just ci
+      - name: Linting the Code
+        run: just lint
+
+      - name: Building the Code
+        run: just build
+
+      - name: Running the Tests
+        run: just test

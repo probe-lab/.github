@@ -4,16 +4,16 @@ This repo holds the GitHub Actions workflows that ProbeLab repos share, the
 templates for new workflows, and the default files for repos that have none
 of their own.
 
-In short: a pull request runs `just ci`, a merge builds one image, and a
-person deploys that image with one click. A merge deploys only when its pull
-request has the label `deploy`.
+In short: a pull request runs `just lint`, `just build` and `just test`, a
+merge builds one image, and a merge deploys that image when its pull request
+has the label `deploy`. A person deploys any commit with one click.
 
 ## What is shared, and what is not
 
 A workflow is shared only when it holds production credentials or sets a
 naming contract that all repos must follow. The steps of a check are not
 shared: every repo spells them out from a template, because a check is
-`setup`, `just`, and `just ci`. The special needs of one repo, such as a
+setup steps and `just` recipes. The special needs of one repo, such as a
 ClickHouse container for the tests, belong in that repo's own `ci.yml`.
 
 | Path | What it is |
@@ -32,19 +32,19 @@ Each shared workflow lists all of its inputs at the top of its file.
 
 | File | Content |
 | --- | --- |
-| `ci.yml` | The `check` job, and the `image` job for a service. |
-| `deploy.yml` | Only in a service that deploys. The Deploy button (a repo can fold it into `ci.yml` as `workflow_dispatch` inputs, as boomo does), and the target of the `deploy` job. |
+| `ci.yml` | The `check` job. A service adds the `image` job. A service that deploys adds the `deploy` job and the Deploy button (`workflow_dispatch`). |
 | `release.yml` | Only in a repo with releases. |
 | `.github/dependabot.yml` | Keeps the action versions of the repo current. |
 
 Start from the templates: in the repo, open Actions, then New workflow, and
 pick a ProbeLab template. The templates are `go-library-ci`,
-`go-service-ci`, `python-service-ci`, `service-deploy` and `release`.
+`go-service-ci`, `python-service-ci` and `release`.
 
 ### The `check` job
 
-The job checks out the code, sets up the language, `just`, and runs
-`just ci`. The pinned versions of tools such as `gofumpt` or `golangci-lint`
+The job checks out the code, sets up the language and `just`, and runs
+`just lint`, `just build` and `just test` as 3 steps. The pinned versions of
+tools such as `gofumpt` or `staticcheck`
 live in the `justfile`, for example `go run mvdan.cc/gofumpt@v0.12.0 -l .`,
 so a person and CI run the same thing.
 
@@ -56,21 +56,24 @@ A repo adds what only it needs to its own job:
 - A step that only this repo has, such as the release build of nebula.
 
 When `just test` starts its own services on a laptop, the repo adds a
-`test-plain` recipe that expects the services, and CI runs
-`just lint test-plain`.
+`test-plain` recipe that expects the services, and the test step runs
+`just test-plain`.
 
 ### A service image
 
 ```yaml
   image:
+    name: Container Image
     needs: check
+    if: github.event.pull_request.draft != true && !failure() && !cancelled()
     permissions:
       contents: read
       id-token: write
-    uses: probe-lab/.github/.github/workflows/image.yml@v2
+      pull-requests: read
+    uses: probe-lab/.github/.github/workflows/image.yml@main
     with:
       service: boomo
-      push: ${{ github.event_name == 'push' }}
+      commit: ${{ inputs.commit }}
 ```
 
 The other inputs are `dockerfile`, `build-args` and `platforms`. The build
@@ -100,11 +103,11 @@ in ECR. It never waits for an image: after a merge, the `deploy` job starts
 only when the `image` job of the same run has pushed it. To roll back, deploy
 an older commit by hand.
 
-A caller that skips checks (a `skip-checks` flag) must keep `deploy` running
-after a skipped `check` job: `!cancelled()` and `needs.image.result ==
-'success'` in the `if`. See boomo.
+The `deploy` job of the service templates also runs after a skipped `check`
+job (the `skip-checks` flag): its `if` has `!cancelled()` and
+`needs.image.result == 'success'`.
 
-The template is `workflow-templates/service-deploy.yml`. Inputs of
+Inputs of
 `deploy-ecs.yml`: `service`, `commit`, `cluster`, `ecs-service`,
 `task-definition`, `container`, `container-env` (environment variables for
 the container, one `KEY=VALUE` per line) and `task-definition-only` (registers
@@ -116,7 +119,7 @@ private repos.
 A repo with several services calls `deploy-ecs.yml` once for each, with a
 `strategy.matrix` or with separate jobs. A step that only one repo needs, such
 as the atlas upload of static files and the Cloudflare purge, is a job in that
-repo's `deploy.yml` before or after the call.
+repo's `ci.yml` before or after the `deploy` job.
 
 ### A release
 
@@ -169,34 +172,28 @@ self-hosted machine is down, delete the org variable `RUNNER_LABEL`.
 
 ## Set up the org, once
 
-1. Merge this repo and tag the major version: `git tag v2.0.0 && git tag v2
-   && git push origin v2.0.0 v2`.
-2. Create the org variable `RUNNER_LABEL` with the value `probelab-ci` and
+1. Create the org variable `RUNNER_LABEL` with the value `probelab-ci` and
    the repository access "Private repositories".
-3. In each service repo, create the label `deploy`.
-4. Narrow the AWS trust in probelab-infra (`tf/oidc.tf`).
-5. Optional: when the plan allows it, add the check jobs of a repo to the
+2. In each service repo, create the label `deploy`.
+3. Narrow the AWS trust in probelab-infra (`tf/oidc.tf`).
+4. Optional: when the plan allows it, add the check jobs of a repo to the
    required checks of its ruleset. No workflow here depends on a check name.
 
 ## Development
 
 `just` lists the recipes. `just lint` runs actionlint on the workflows and the
 templates (`scripts/lint.sh`) and downloads `actionlint` if it is not on the PATH. `just ci`
-runs the checks that can run locally. CI also builds a small image with
-`image.yml`.
+runs the same checks as CI.
 
 ## Change this repo
 
-1. Open a pull request. Its CI lints every workflow and template, and builds
-   the image in `tests/image/`.
-2. `deploy-ecs.yml` and `release.yml` need AWS or a tag, so the CI only lints
-   them. Before a release, try a change in one repo with `@<your branch>`
-   instead of `@v2`.
-3. Write the changes under a new `## [X.Y.Z]` section in `CHANGELOG.md`.
-   After the merge, tag `vX.Y.Z` and move the major tag to it:
-   `git tag -f v2 vX.Y.Z && git push -f origin vX.Y.Z v2`.
-4. A change that breaks a caller, such as a renamed or removed input, is a new
-   major version.
+1. Open a pull request. Its CI lints every workflow and template.
+2. The shared workflows need AWS or a tag, so CI only lints them. Before the
+   merge, try a change in one repo with `@<your branch>` instead of `@main`.
+3. Write the changes in `CHANGELOG.md`, under the date of the merge.
+4. Callers use `@main`, so a merge reaches every caller at once. A change that
+   breaks a caller, such as a renamed or removed input, updates the callers
+   too.
 5. Before you add an input, ask if the repo could do it in its own `ci.yml` or
    `justfile`. An input is only for a generic idea, such as a build argument or
    an ECS container variable, never for the tooling of one repo.
