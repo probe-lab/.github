@@ -73,7 +73,8 @@ When `just test` starts its own services on a laptop, the repo adds a
       commit: ${{ inputs.commit }}
 ```
 
-The other inputs are `dockerfile`, `build-args` and `platforms`. The build
+The other inputs are `dockerfile`, `build-args`, `platforms` and `lfs`, which
+downloads the Git LFS files for a Dockerfile that copies them (atlas). The build
 context is the repo root.
 
 Several images from one repo use a matrix. data-platform builds one image for
@@ -141,6 +142,7 @@ the tools of this table when you set up a runner.
 | Tool | Needed by | Why |
 | --- | --- | --- |
 | `git` | every workflow | The checkout. |
+| `git-lfs` | `image.yml` with `lfs`, repo checks with `lfs: true` | Downloads the Git LFS files. |
 | `docker` | `image.yml`, repo checks that build images | Builds the image and logs in to ECR. |
 | `aws` (CLI v2) | `image.yml`, `deploy-ecs.yml` | Looks for the image in ECR, and reads the task definition. |
 | `gh` | `image.yml`, `deploy-ecs.yml` | Finds the merged pull request of a push, and the commit on the default branch. |

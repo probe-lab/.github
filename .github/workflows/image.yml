@@ -38,6 +38,10 @@ on:
       platforms:
         type: string
         default: linux/amd64
+      lfs:
+        description: Downloads the Git LFS files, for a Dockerfile that copies them.
+        type: boolean
+        default: false
       commit:
         description: >-
           The commit to build, as a SHA, a branch or a tag. Empty means the
@@ -106,6 +110,7 @@ jobs:
         with:
           ref: ${{ inputs.commit || github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+          lfs: ${{ inputs.lfs }}
 
       - name: Computing the Image Tags
         id: tags

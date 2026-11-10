@@ -53,6 +53,8 @@ callers move from `@v1` to `@main`. A caller of version 1 keeps working at
 
 ### Added
 
+- `image.yml`: the `lfs` input, which downloads the Git LFS files of the
+  checkout for a Dockerfile that copies them. The runner needs `git-lfs`.
 - The README lists the tools that the self-hosted runner needs.
 - `image.yml`: pushes the image of a pull request that has the label
   `push-image`. The `push` input defaults to false and forces the push; without it
