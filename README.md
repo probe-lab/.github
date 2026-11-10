@@ -148,6 +148,8 @@ the tools of this table when you set up a runner.
 | `gh` | `image.yml`, `deploy-ecs.yml` | Finds the merged pull request of a push, and the commit on the default branch. |
 | `jq` | `image.yml`, `deploy-ecs.yml` | Reads the answers of `gh` and `aws`. |
 | `libpq5` | atlas checks | The PostgreSQL client library that `psycopg` loads in the tests. |
+| `libpq-dev` | data-platform checks | `pg_config`, which the source build of `psycopg2` needs. |
+| `gcc` | data-platform checks | Compiles `psycopg2` from source. |
 
 When a workflow starts to use a new tool, add it to this table and install it
 on the runner.
