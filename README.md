@@ -157,6 +157,92 @@ on the runner.
 To move every check to GitHub-hosted runners, for example when the
 self-hosted machine is down, delete the org variable `RUNNER_LABEL`.
 
+### Set up a runner
+
+A self-hosted runner keeps the workspace of a repo (`_work/<repo>/<repo>`)
+from one job to the next, and `actions/checkout` reuses the clone in it. A
+setting that one job writes to `.git/config` then reaches the next job. For
+example, after a job with `sparse-checkout`, a checkout with `lfs: true` in the
+same workspace fails with `Could not scan for Git LFS files` and
+`missing object`.
+
+These steps start each job with an empty workspace, as on a GitHub-hosted
+runner. Caches that name each file by the hash of its content stay on the
+runner:
+
+| Data | Location | Before each job |
+| --- | --- | --- |
+| The clone: `.git/config`, refs, files | `$GITHUB_WORKSPACE` | Emptied by the job-started hook |
+| Git LFS files | `~/.cache/git-lfs`, set by `lfs.storage` | Kept. git-lfs names each file by its SHA-256. |
+| Tools of setup actions | `_work/_tool` | Kept |
+| Go and uv caches | `~/go`, `~/.cache` | Kept |
+
+Each runner runs as its own user, with the runner in `~/actions-runner`. Do
+steps 1 and 2 once for the machine. Do steps 3 to 7 for each runner, with
+`RUNNER_USER` set to the user of that runner.
+
+1. Install the tools of [Runner tools](#runner-tools).
+2. Install the hook script. Keep it outside `~/actions-runner`:
+
+   ```sh
+   sudo mkdir -p /opt/actions-runner-hooks
+   sudo tee /opt/actions-runner-hooks/clean-workspace.sh >/dev/null <<'EOF'
+   #!/usr/bin/env bash
+   # Empties the workspace of the job, so that each job starts with a new clone.
+   set -euo pipefail
+   if [[ -n "${GITHUB_WORKSPACE:-}" && -d "$GITHUB_WORKSPACE" ]]; then
+     find "$GITHUB_WORKSPACE" -mindepth 1 -delete
+   fi
+   EOF
+   sudo chmod 755 /opt/actions-runner-hooks/clean-workspace.sh
+   ```
+
+3. Set the hook in the `.env` file of the runner:
+
+   ```sh
+   echo 'ACTIONS_RUNNER_HOOK_JOB_STARTED=/opt/actions-runner-hooks/clean-workspace.sh' \
+     | sudo -u "$RUNNER_USER" tee -a "/home/$RUNNER_USER/actions-runner/.env"
+   ```
+
+4. Keep the Git LFS files outside the workspace. `actions/checkout` copies the
+   `~/.gitconfig` of the runner user, so its `git lfs fetch` uses this folder:
+
+   ```sh
+   sudo -u "$RUNNER_USER" -H git config --global lfs.storage "/home/$RUNNER_USER/.cache/git-lfs"
+   ```
+
+5. Once a week, delete the Git LFS files that no job read in 14 days:
+
+   ```sh
+   (sudo crontab -u "$RUNNER_USER" -l 2>/dev/null
+    echo '0 4 * * 0 find "$HOME/.cache/git-lfs/objects" -type f -atime +14 -delete 2>/dev/null') \
+     | sudo crontab -u "$RUNNER_USER" -
+   ```
+
+   `-atime` needs access times. If `findmnt -no OPTIONS -T /home` shows
+   `noatime`, delete the folder `~/.cache/git-lfs` once a week instead.
+
+6. Restart the runner. For a service installed with `svc.sh`:
+
+   ```sh
+   cd "/home/$RUNNER_USER/actions-runner" && sudo ./svc.sh stop && sudo ./svc.sh start
+   ```
+
+7. Start a job on the runner. Its log shows the hook in the step "Set up
+   runner". After a job with `lfs: true`,
+   `/home/$RUNNER_USER/.cache/git-lfs/objects` holds files.
+
+Limits:
+
+- The hook empties only the workspace. Files that a job writes in other places
+  stay, for example Docker containers and volumes, and files in the home
+  folder.
+- When the runner user cannot delete a file in the workspace, the hook fails
+  and the job does not run. A `container:` job can leave such files, owned by
+  root. Delete them as root.
+- Do not run `git lfs prune` in a job. All repos on the runner share the LFS
+  folder, and the command deletes files that other repos use.
+
 ## Set up the org, once
 
 1. Create the org variable `RUNNER_LABEL` with the value `probelab-ci` and
