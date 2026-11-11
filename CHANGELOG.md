@@ -5,6 +5,15 @@ workflows at `@main`, so a change reaches every caller when it merges.
 Old callers keep `@v1`. Changes are listed under the date of the merge, in the
 format of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-11
+
+### Fixed
+
+- `image.yml`: a run that only builds, such as a pull request without the
+  label `push-image`, no longer looks up the image in ECR. It has no AWS
+  login, so on a runner without its own AWS credentials the lookup failed
+  the job with `NoCredentials`. Such a run now always builds.
+
 ## 2026-11-10
 
 The special cases of single repos move out of the shared workflows, and

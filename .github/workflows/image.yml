@@ -144,8 +144,11 @@ jobs:
         if: env.PUSH == 'true'
         uses: aws-actions/amazon-ecr-login@v2
 
+      # Only a run that pushes logs in to AWS, so a run that only builds
+      # skips the lookup and always builds.
       - name: Checking if ${{ steps.tags.outputs.tag }} exists
         id: exists
+        if: env.PUSH == 'true'
         env:
           REPOSITORY: ${{ env.ECR_REPOSITORY }}
           TAG: ${{ steps.tags.outputs.tag }}
