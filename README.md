@@ -23,7 +23,7 @@ ClickHouse container for the tests, belong in that repo's own `ci.yml`.
 | `.github/workflows/deploy-ecs.yml` | Deploys the image of one commit to one ECS service. |
 | `PULL_REQUEST_TEMPLATE.md`, `SECURITY.md` | Defaults for every org repo that has no file of its own. |
 | `profile/README.md` | The public page of the org. |
-| `.github/workflows/ci.yml`, `tests/` | The CI of this repo. |
+| `.github/workflows/ci.yml` | The CI of this repo. |
 
 Each shared workflow lists all of its inputs at the top of its file.
 
